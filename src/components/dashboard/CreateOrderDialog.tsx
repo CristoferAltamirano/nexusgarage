@@ -1,154 +1,179 @@
-"use client"
+"use client";
 
 import { useState } from "react";
-import { createOrder } from "@/actions/create-order";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { PlusCircle, Car, User, FileText } from "lucide-react";
-import { toast } from "sonner"; 
+import { Plus, Car, User, Search } from "lucide-react";
+import { createOrder } from "@/actions/create-order"; // Asegúrate que la ruta sea correcta
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Props {
   tenantId: string;
   slug: string;
-  vehicles: any[]; // Mantenemos any[] para evitar conflictos de tipos si la DB cambia
-  trigger?: React.ReactNode; // <--- ESTO ES VITAL: Permite usar botones personalizados
+  vehicles: any[]; // Recibimos la lista de vehículos desde la página
 }
 
-export function CreateOrderDialog({ tenantId, slug, vehicles, trigger }: Props) {
+export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
   const [open, setOpen] = useState(false);
-  const [isPending, setIsPending] = useState(false);
 
-  async function handleSubmit(formData: FormData) {
-    setIsPending(true);
-    try {
-        await createOrder(formData);
-        toast.success("Orden creada correctamente");
-        setOpen(false);
-    } catch (error) {
-        toast.error("Error al crear la orden. Revisa los datos.");
-    } finally {
-        setIsPending(false);
+  // ESTADOS DEL FORMULARIO (Para poder auto-rellenar)
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [taxId, setTaxId] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  
+  const [plate, setPlate] = useState("");
+  const [brand, setBrand] = useState("");
+  const [model, setModel] = useState("");
+
+  // Función mágica: Cuando seleccionas un vehículo de la lista
+  const handleSelectVehicle = (vehicleId: string) => {
+    const selected = vehicles.find((v) => v.id === vehicleId);
+    
+    if (selected) {
+      // 1. Rellenar Datos del Cliente
+      setFirstName(selected.customer.firstName);
+      setLastName(selected.customer.lastName);
+      setTaxId(selected.customer.taxId || "");
+      setEmail(selected.customer.email || "");
+      setPhone(selected.customer.phone || "");
+
+      // 2. Rellenar Datos del Vehículo
+      setPlate(selected.plateOrSerial);
+      setBrand(selected.brand);
+      setModel(selected.model);
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {/* Si le pasamos un botón personalizado (trigger), lo usa. Si no, usa el botón azul por defecto. */}
-        {trigger ? (
-            trigger
-        ) : (
-            <Button className="bg-indigo-600 hover:bg-indigo-700 shadow-sm transition-colors">
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Nueva Orden
-            </Button>
-        )}
+        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white">
+          <Plus className="mr-2 h-4 w-4" /> Nueva Orden
+        </Button>
       </DialogTrigger>
-      
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Ingresar Vehículo</DialogTitle>
-          <DialogDescription>
-            Crea una nueva orden. Si el cliente o vehículo no existen, se registrarán automáticamente.
-          </DialogDescription>
+          <DialogTitle className="text-xl font-bold">Ingresar Orden de Trabajo</DialogTitle>
         </DialogHeader>
 
-        <form action={handleSubmit} className="space-y-6 mt-2">
-            <input type="hidden" name="tenantId" value={tenantId} />
-            <input type="hidden" name="slug" value={slug} />
+        {/* --- BUSCADOR RÁPIDO --- */}
+        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
+          <Label className="text-xs font-bold text-slate-500 uppercase mb-2 block">
+            ⚡ Carga Rápida (Vehículos Recientes)
+          </Label>
+          <Select onValueChange={handleSelectVehicle}>
+            <SelectTrigger className="bg-white">
+              <SelectValue placeholder="Buscar por Patente o Cliente..." />
+            </SelectTrigger>
+            <SelectContent>
+              {vehicles.map((v) => (
+                <SelectItem key={v.id} value={v.id}>
+                  <span className="font-bold">{v.plateOrSerial}</span> - {v.brand} ({v.customer.firstName} {v.customer.lastName})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-            {/* SECCIÓN 1: CLIENTE */}
-            <div className="space-y-4 border-b border-slate-100 pb-4">
-                <h3 className="flex items-center text-sm font-semibold text-indigo-600 bg-indigo-50 w-fit px-2 py-1 rounded">
-                    <User className="mr-2 h-4 w-4" /> Datos del Cliente
-                </h3>
+        <form action={async (formData) => {
+            await createOrder(formData);
+            setOpen(false);
+            // Limpiar formulario opcionalmente aquí
+        }} className="space-y-6">
+            
+            {/* Ocultamos IDs necesarios */}
+            <input type="hidden" name="tenantId" value={tenantId} />
+
+            {/* SECCIÓN CLIENTE */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 text-indigo-600 border-b pb-2">
+                    <User className="h-4 w-4" />
+                    <h3 className="font-semibold text-sm">Datos del Cliente</h3>
+                </div>
+                
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label htmlFor="firstName">Nombre</Label>
-                        <Input id="firstName" name="firstName" placeholder="Ej: Juan" required className="bg-slate-50/50" />
+                        <Label>Nombre</Label>
+                        <Input name="firstName" value={firstName} onChange={(e) => setFirstName(e.target.value)} required placeholder="Ej: Juan" />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="lastName">Apellido</Label>
-                        <Input id="lastName" name="lastName" placeholder="Ej: Pérez" required className="bg-slate-50/50" />
+                        <Label>Apellido</Label>
+                        <Input name="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} required placeholder="Ej: Pérez" />
                     </div>
                 </div>
+
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label htmlFor="taxId">RUT / DNI</Label>
-                        <Input id="taxId" name="taxId" placeholder="12.345.678-9" required className="bg-slate-50/50" />
+                        <Label>RUT / DNI</Label>
+                        <Input name="taxId" value={taxId} onChange={(e) => setTaxId(e.target.value)} placeholder="12.345.678-9" />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="phone">Teléfono</Label>
-                        <Input id="phone" name="phone" placeholder="+56 9..." required className="bg-slate-50/50" />
+                        <Label>Teléfono</Label>
+                        <Input name="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+56 9..." />
                     </div>
                 </div>
+                
                 <div className="space-y-2">
-                    <Label htmlFor="email">Email (Opcional)</Label>
-                    <Input id="email" name="email" type="email" placeholder="cliente@email.com" className="bg-slate-50/50" />
+                    <Label>Email (Opcional)</Label>
+                    <Input name="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="cliente@email.com" />
                 </div>
             </div>
 
-            {/* SECCIÓN 2: VEHÍCULO */}
-            <div className="space-y-4 border-b border-slate-100 pb-4">
-                <h3 className="flex items-center text-sm font-semibold text-indigo-600 bg-indigo-50 w-fit px-2 py-1 rounded">
-                    <Car className="mr-2 h-4 w-4" /> Datos del Vehículo
-                </h3>
+            {/* SECCIÓN VEHÍCULO */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 text-indigo-600 border-b pb-2">
+                    <Car className="h-4 w-4" />
+                    <h3 className="font-semibold text-sm">Datos del Vehículo</h3>
+                </div>
+
                 <div className="grid grid-cols-3 gap-4">
                     <div className="space-y-2">
-                        <Label htmlFor="plate">Patente</Label>
-                        <Input id="plate" name="plate" placeholder="ABCD-12" required className="uppercase font-mono bg-slate-50/50" />
+                        <Label>Patente</Label>
+                        <Input name="plate" value={plate} onChange={(e) => setPlate(e.target.value)} required placeholder="ABCD-12" className="uppercase" />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="brand">Marca</Label>
-                        <Input id="brand" name="brand" placeholder="Toyota" required className="bg-slate-50/50" />
+                        <Label>Marca</Label>
+                        <Input name="brand" value={brand} onChange={(e) => setBrand(e.target.value)} required placeholder="Toyota" />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="model">Modelo</Label>
-                        <Input id="model" name="model" placeholder="Yaris" required className="bg-slate-50/50" />
+                        <Label>Modelo</Label>
+                        <Input name="model" value={model} onChange={(e) => setModel(e.target.value)} required placeholder="Yaris" />
                     </div>
                 </div>
             </div>
 
-            {/* SECCIÓN 3: DETALLES */}
+            {/* SECCIÓN DETALLES INGRESO (Siempre vacíos al inicio) */}
             <div className="space-y-4">
-                <h3 className="flex items-center text-sm font-semibold text-indigo-600 bg-indigo-50 w-fit px-2 py-1 rounded">
-                    <FileText className="mr-2 h-4 w-4" /> Detalles de Ingreso
-                </h3>
-                <div className="space-y-2">
-                    <Label htmlFor="description">Motivo / Problema</Label>
-                    <Textarea 
-                        id="description" 
-                        name="description" 
-                        placeholder="El cliente reporta ruido en frenos..." 
-                        required 
-                        className="bg-slate-50/50 min-h-[80px]"
-                    />
+                 <div className="flex items-center gap-2 text-indigo-600 border-b pb-2">
+                    <Search className="h-4 w-4" />
+                    <h3 className="font-semibold text-sm">Detalles de Ingreso</h3>
                 </div>
+
+                <div className="space-y-2">
+                    <Label>Motivo / Problema</Label>
+                    <Textarea name="description" required placeholder="El cliente reporta ruido en frenos..." />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label htmlFor="kilometer">Kilometraje</Label>
-                        <Input id="kilometer" name="kilometer" type="number" placeholder="0" className="bg-slate-50/50" />
+                        <Label>Kilometraje</Label>
+                        <Input name="kilometer" type="number" placeholder="0" />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="fuelLevel">Combustible (%)</Label>
-                        <Input id="fuelLevel" name="fuelLevel" type="number" min="0" max="100" placeholder="50" className="bg-slate-50/50" />
+                        <Label>Combustible (%)</Label>
+                        <Input name="fuelLevel" type="number" min="0" max="100" placeholder="50" />
                     </div>
                 </div>
             </div>
 
-            <div className="flex justify-end pt-4">
-                <Button type="submit" disabled={isPending} className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 shadow-md font-medium text-base">
-                    {isPending ? "Creando..." : "Crear Orden"}
+            <div className="pt-4">
+                <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-12">
+                    Crear Orden
                 </Button>
             </div>
         </form>
