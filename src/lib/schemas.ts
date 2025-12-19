@@ -4,7 +4,7 @@ import { z } from "zod";
 export const customerSchema = z.object({
   firstName: z.string().min(2, "El nombre debe tener al menos 2 letras"),
   lastName: z.string().min(2, "El apellido debe tener al menos 2 letras"),
-  taxId: z.string().min(1, "El RUT es obligatorio"), // Podrías agregar regex de RUT aquí
+  taxId: z.string().min(1, "El RUT es obligatorio"),
   phone: z.string().min(8, "El teléfono es muy corto"),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
   address: z.string().optional(),
@@ -18,7 +18,6 @@ export const productSchema = z.object({
   stock: z.number().int("El stock debe ser entero").min(0),
   category: z.string()
 });
-// ... (mantén lo de productSchema y customerSchema que ya tenías)
 
 // Reglas para Configuración del Taller
 export const settingsSchema = z.object({
@@ -43,5 +42,7 @@ export const orderSchema = z.object({
   
   description: z.string().min(5, "Falta descripción del problema"),
   kilometer: z.coerce.number().min(0), // "coerce" convierte texto a número
-  fuelLevel: z.coerce.number().min(0).max(8), // De 0 a 8 rayitas
+  
+  // 👇 AQUÍ ESTÁ EL CAMBIO: Ahora acepta hasta 100 (para usar %)
+  fuelLevel: z.coerce.number().min(0).max(100), 
 });
