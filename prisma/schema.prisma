@@ -1,0 +1,214 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. EL TALLER (TENANT)
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  userId    String   
+
+  address   String?
+  phone     String?
+  email     String?
+  website   String?
+  logoUrl   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+    
+  users      User[]
+  customers  Customer[]
+  vehicles   Vehicle[]
+  workOrders WorkOrder[]
+  products   ServiceProduct[]
+  auditLogs  AuditLog[] 
+}
+
+// 2. USUARIOS
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  role      String   @default("MECHANIC")
+    
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+    
+  workOrders WorkOrder[] 
+  
+  @@index([tenantId])
+}
+
+// 3. EL CLIENTE (Con Soft Delete)
+model Customer {
+  id        String   @id @default(uuid())
+  firstName String
+  lastName  String
+  taxId     String?
+  isCompany Boolean  @default(false) 
+  email     String?
+  phone     String
+  address   String?
+    
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  vehicles  Vehicle[]
+    
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime? // ♻️ Papelera
+
+  @@index([tenantId])             
+  @@index([tenantId, taxId])      
+  @@index([tenantId, lastName])
+  @@index([deletedAt]) // Para filtrar rápido los borrados
+}
+
+// 4. INVENTARIO (Con Soft Delete)
+model ServiceProduct {
+  id          String   @id @default(uuid())
+  name        String
+  code        String?
+  category    String
+  netPrice    Float
+  stock       Int      @default(0)
+  minStock    Int      @default(5) 
+    
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  orderItems  OrderItem[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime? // ♻️ Papelera
+
+  @@index([tenantId])
+  @@index([tenantId, code]) 
+  @@index([tenantId, name])
+  @@index([deletedAt])
+}
+
+// 5. EL VEHÍCULO (Con Soft Delete)
+model Vehicle {
+  id            String   @id @default(uuid())
+  type          String   
+  brand         String
+  model         String
+  plateOrSerial String
+  color         String?
+  notes         String?
+
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+    
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+
+  workOrders  WorkOrder[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime? // ♻️ Papelera
+
+  @@index([tenantId])
+  @@index([tenantId, plateOrSerial]) 
+  @@index([customerId])
+  @@index([deletedAt])
+}
+
+// 6. LA ORDEN DE TRABAJO (Con Soft Delete)
+model WorkOrder {
+  id          String   @id @default(uuid())
+  number      Int      @default(autoincrement())
+  description String
+  status      Status   @default(PENDING)
+    
+  kilometer       Int?      
+  fuelLevel       Int?      
+  receptionNotes  Json?     
+    
+  dteType       String?
+  dteNumber     Int?      
+  netAmount     Float    @default(0.0)
+  taxAmount     Float    @default(0.0)
+  totalAmount   Float    @default(0.0)
+    
+  startDate      DateTime @default(now())
+  estimatedDate  DateTime?
+  endDate        DateTime?
+
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+    
+  vehicleId     String
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  mechanicId    String?  
+  mechanic      User?    @relation(fields: [mechanicId], references: [id])
+
+  items         OrderItem[] 
+
+  createdAt     DateTime @default(now()) 
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime? // ♻️ Papelera
+
+  @@index([tenantId])
+  @@index([tenantId, status]) 
+  @@index([vehicleId])        
+  @@index([startDate])
+  @@index([deletedAt])
+}
+
+// 7. ÍTEMS
+model OrderItem {
+  id          String   @id @default(uuid())
+  description String   
+  quantity    Int      @default(1)
+  price       Float
+    
+  productId   String?
+  product     ServiceProduct? @relation(fields: [productId], references: [id])
+    
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId]) 
+}
+
+// 8. LOGS
+model AuditLog {
+  id          String   @id @default(cuid())
+  tenantId    String
+  action      String   
+  entityType  String   
+  entityId    String   
+  details     String?  
+  userId      String   
+  userEmail   String   
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  
+  @@index([tenantId])
+  @@index([createdAt]) 
+}
+
+enum Status {
+  PENDING
+  IN_PROGRESS
+  WAITING_PARTS
+  COMPLETED
+  DELIVERED
+  CANCELLED
+}
