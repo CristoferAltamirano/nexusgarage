@@ -2,79 +2,96 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation"; // 👈 1. IMPORTA ESTO
+import { redirect } from "next/navigation";
 import { getAuthenticatedTenant } from "@/lib/safe-action";
 import { orderSchema } from "@/lib/schemas";
 import { createLog } from "@/lib/create-log";
 
 export async function createOrder(formData: FormData) {
-  const tenant = await getAuthenticatedTenant(); 
+  try {
+    const tenant = await getAuthenticatedTenant(); 
 
-  const rawData = {
-    firstName: formData.get("firstName"),
-    lastName: formData.get("lastName"),
-    taxId: formData.get("taxId"),
-    email: formData.get("email"),
-    phone: formData.get("phone"),
-    plate: formData.get("plate"),
-    brand: formData.get("brand"),
-    model: formData.get("model"),
-    description: formData.get("description"),
-    kilometer: formData.get("kilometer"),
-    fuelLevel: formData.get("fuelLevel"),
-  };
+    // 1. CONVERSIÓN DE DATOS (Aquí estaba el error)
+    // Convertimos "kilometer" y "fuelLevel" a números reales.
+    const rawData = {
+      firstName: formData.get("firstName"),
+      lastName: formData.get("lastName"),
+      taxId: formData.get("taxId"),
+      email: formData.get("email"),
+      phone: formData.get("phone"),
+      plate: formData.get("plate"),
+      brand: formData.get("brand"),
+      model: formData.get("model"),
+      description: formData.get("description"),
+      // 👇 La magia: Si viene vacío ponemos 0, si viene texto lo hacemos número
+      kilometer: Number(formData.get("kilometer") || 0), 
+      fuelLevel: Number(formData.get("fuelLevel") || 0),
+    };
 
-  const result = orderSchema.safeParse(rawData);
+    console.log("📦 Datos recibidos:", rawData); // Esto saldrá en tu terminal
 
-  if (!result.success) {
-    console.log(result.error.flatten());
-    return;
-  }
+    // 2. Validación Zod
+    const result = orderSchema.safeParse(rawData);
 
-  const { firstName, lastName, taxId, email, phone, plate, brand, model, description, kilometer, fuelLevel } = result.data;
-
-  // 1. Cliente
-  let customer = await db.customer.findFirst({
-    where: { tenantId: tenant.id, taxId: taxId || "undefined" }
-  });
-
-  if (!customer) {
-    customer = await db.customer.create({
-        data: { tenantId: tenant.id, firstName, lastName, taxId, email, phone, address: "" }
-    });
-  }
-
-  // 2. Vehículo
-  let vehicle = await db.vehicle.findFirst({
-    where: { tenantId: tenant.id, plateOrSerial: plate }
-  });
-
-  if (!vehicle) {
-    vehicle = await db.vehicle.create({
-        data: { tenantId: tenant.id, customerId: customer.id, type: "CAR", brand, model, plateOrSerial: plate, color: "Desconocido" }
-    });
-  }
-
-  // 3. Crear Orden
-  const newOrder = await db.workOrder.create({
-    data: {
-        tenantId: tenant.id,
-        vehicleId: vehicle.id,
-        description,
-        kilometer,
-        fuelLevel,
-        status: "PENDING",
-        number: undefined,
+    if (!result.success) {
+      console.error("❌ Error de Validación:", result.error.flatten());
+      return { success: false, error: "Datos inválidos (Revisa la terminal)" };
     }
-  });
 
-  // Log
-  await createLog(tenant.id, "CREATE_ORDER", "WorkOrder", newOrder.id, `Orden #${newOrder.number} - ${plate}`);
+    const { firstName, lastName, taxId, email, phone, plate, brand, model, description, kilometer, fuelLevel } = result.data;
 
-  // Limpiar caché
-  revalidatePath(`/${tenant.slug}/dashboard`);
-  revalidatePath(`/${tenant.slug}/orders`);
+    // 3. Lógica de Base de Datos
+    
+    // Buscar/Crear Cliente
+    let customer = await db.customer.findFirst({
+      where: { tenantId: tenant.id, taxId: taxId || "undefined" }
+    });
 
-  // 👇 2. EL PASO FINAL: Redirigir para forzar la actualización visual
+    if (!customer) {
+      customer = await db.customer.create({
+          data: { tenantId: tenant.id, firstName, lastName, taxId, email, phone, address: "" }
+      });
+    }
+
+    // Buscar/Crear Vehículo
+    let vehicle = await db.vehicle.findFirst({
+      where: { tenantId: tenant.id, plateOrSerial: plate }
+    });
+
+    if (!vehicle) {
+      vehicle = await db.vehicle.create({
+          data: { tenantId: tenant.id, customerId: customer.id, type: "CAR", brand, model, plateOrSerial: plate, color: "Desconocido" }
+      });
+    }
+
+    // Crear la Orden
+    const newOrder = await db.workOrder.create({
+      data: {
+          tenantId: tenant.id,
+          vehicleId: vehicle.id,
+          description,
+          kilometer,
+          fuelLevel,
+          status: "PENDING",
+      }
+    });
+
+    console.log("✅ Orden Creada con ID:", newOrder.id);
+
+    // Logs y Revalidación
+    await createLog(tenant.id, "CREATE_ORDER", "WorkOrder", newOrder.id, `Orden #${newOrder.number} - ${plate}`);
+
+    revalidatePath(`/${tenant.slug}/dashboard`);
+    revalidatePath(`/${tenant.slug}/orders`);
+
+  } catch (error) {
+    console.error("🔥 Error Fatal en createOrder:", error);
+    return { success: false, error: "Error interno del servidor" };
+  }
+
+  // Redirección fuera del try-catch (Next.js lo requiere así)
+  // OJO: Usamos slug del formulario o lo volvemos a buscar, 
+  // pero para asegurar usaremos el tenant que ya tenemos autenticado.
+  const tenant = await getAuthenticatedTenant(); 
   redirect(`/${tenant.slug}/orders`);
 }
