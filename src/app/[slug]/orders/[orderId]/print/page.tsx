@@ -3,9 +3,21 @@ import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
-export default async function PrintOrderPage({ params }: { params: { orderId: string } }) {
+// 🚀 ESTO ES LO QUE ARREGLA EL ERROR DE VERCEL
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+interface Props {
+  params: Promise<{ orderId: string; slug: string }>;
+}
+
+export default async function PrintOrderPage({ params }: Props) {
+  // En Next.js 15, los params deben ser esperados (awaited)
+  const resolvedParams = await params;
+  const { orderId } = resolvedParams;
+
   const order = await db.workOrder.findUnique({
-    where: { id: params.orderId },
+    where: { id: orderId },
     include: {
       vehicle: { include: { customer: true } },
       items: true,
@@ -15,74 +27,93 @@ export default async function PrintOrderPage({ params }: { params: { orderId: st
 
   if (!order) return notFound();
 
-  // 🛡️ Salvavidas para evitar la pantalla blanca
-  const customerName = `${order.vehicle?.customer?.firstName ?? "Cliente"} ${order.vehicle?.customer?.lastName ?? ""}`;
-  const dateStr = order.createdAt ? format(new Date(order.createdAt), "dd 'de' MMMM, yyyy", { locale: es }) : "Fecha no disponible";
+  // 🛡️ Evitamos errores de "null" si el cliente o vehículo no existen
+  const customer = order.vehicle?.customer;
+  const vehicle = order.vehicle;
 
   return (
-    <div className="p-10 bg-white text-black min-h-screen">
-      {/* Botón para activar el diálogo de impresión del navegador automáticamente */}
+    <div className="p-8 bg-white text-black min-h-screen font-sans">
+      {/* Script para imprimir automáticamente al cargar */}
       <script dangerouslySetInnerHTML={{ __html: "window.print()" }} />
 
-      <div className="flex justify-between border-b-2 pb-5 mb-5">
+      {/* ENCABEZADO */}
+      <div className="flex justify-between items-start border-b-2 border-black pb-6 mb-8">
         <div>
-          <h1 className="text-3xl font-bold uppercase">{order.tenant?.name ?? "NEXUS GARAGE"}</h1>
-          <p className="text-sm text-gray-500">Orden de Trabajo #{order.number}</p>
+          <h1 className="text-4xl font-black uppercase tracking-tighter">
+            {order.tenant?.name || "NEXUS GARAGE"}
+          </h1>
+          <p className="text-sm font-bold text-gray-600 uppercase">Orden de Trabajo #{order.number}</p>
         </div>
         <div className="text-right">
-          <p className="font-bold">Fecha de Ingreso</p>
-          <p>{dateStr}</p>
+          <p className="text-xs uppercase font-bold text-gray-500">Fecha de Emisión</p>
+          <p className="font-medium">
+            {order.createdAt ? format(new Date(order.createdAt), "PPP", { locale: es }) : "S/F"}
+          </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-10 mb-10">
-        <div>
-          <h3 className="font-bold border-b mb-2">CLIENTE</h3>
-          <p className="font-medium">{customerName}</p>
-          <p>{order.vehicle?.customer?.phone ?? "Sin teléfono"}</p>
-          <p className="text-sm text-gray-600">{order.vehicle?.customer?.email ?? ""}</p>
+      {/* INFORMACIÓN DE CONTACTO */}
+      <div className="grid grid-cols-2 gap-12 mb-10">
+        <div className="space-y-1">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Cliente</h3>
+          <p className="text-lg font-bold uppercase">{customer?.firstName} {customer?.lastName}</p>
+          <p className="text-sm">{customer?.phone || "Sin teléfono"}</p>
+          <p className="text-sm text-gray-600">{customer?.email}</p>
         </div>
-        <div>
-          <h3 className="font-bold border-b mb-2">VEHÍCULO</h3>
-          <p className="font-medium uppercase">{order.vehicle?.brand} {order.vehicle?.model}</p>
-          <p className="font-mono bg-gray-100 inline-block px-2">Patente: {order.vehicle?.plateOrSerial}</p>
+        <div className="space-y-1">
+          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Vehículo</h3>
+          <p className="text-lg font-bold uppercase">{vehicle?.brand} {vehicle?.model}</p>
+          <p className="inline-block px-2 py-1 bg-black text-white font-mono text-sm font-bold rounded mt-1">
+            PATENTE: {vehicle?.plateOrSerial}
+          </p>
         </div>
       </div>
 
-      <table className="w-full mb-10">
-        <thead>
-          <tr className="border-b-2 text-left">
-            <th className="py-2">Descripción</th>
-            <th className="py-2 text-center">Cant.</th>
-            <th className="py-2 text-right">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {order.items.map((item) => (
-            <tr key={item.id} className="border-b">
-              <td className="py-2">{item.description}</td>
-              <td className="py-2 text-center">{item.quantity}</td>
-              <td className="py-2 text-right">${item.price.toLocaleString("es-CL")}</td>
+      {/* TABLA DE SERVICIOS */}
+      <div className="mb-10">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b-2 border-black text-left text-xs uppercase font-bold text-gray-600">
+              <th className="pb-3">Descripción del Servicio / Repuesto</th>
+              <th className="pb-3 text-center w-24">Cant.</th>
+              <th className="pb-3 text-right w-32">Total</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {order.items.map((item) => (
+              <tr key={item.id} className="text-sm">
+                <td className="py-4 font-medium">{item.description}</td>
+                <td className="py-4 text-center">{item.quantity}</td>
+                <td className="py-4 text-right font-bold">${item.price.toLocaleString("es-CL")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-      <div className="flex justify-end">
-        <div className="w-64 space-y-2">
-          <div className="flex justify-between">
+      {/* TOTALES */}
+      <div className="flex justify-end pt-6 border-t-2 border-black">
+        <div className="w-64 space-y-3">
+          <div className="flex justify-between text-sm text-gray-600">
             <span>Neto:</span>
-            <span>${(order.totalAmount / 1.19).toLocaleString("es-CL", { maximumFractionDigits: 0 })}</span>
+            <span>${Math.round(order.totalAmount / 1.19).toLocaleString("es-CL")}</span>
           </div>
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between text-sm text-gray-600">
             <span>IVA (19%):</span>
-            <span>${(order.totalAmount - (order.totalAmount / 1.19)).toLocaleString("es-CL", { maximumFractionDigits: 0 })}</span>
+            <span>${Math.round(order.totalAmount - (order.totalAmount / 1.19)).toLocaleString("es-CL")}</span>
           </div>
-          <div className="flex justify-between text-xl font-bold">
+          <div className="flex justify-between text-2xl font-black bg-black text-white p-2">
             <span>TOTAL:</span>
             <span>${order.totalAmount.toLocaleString("es-CL")}</span>
           </div>
         </div>
+      </div>
+
+      {/* PIE DE PÁGINA */}
+      <div className="mt-20 text-center border-t border-dashed pt-10">
+        <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">
+          Documento generado por Nexus Garage OS — Gestión Profesional de Talleres
+        </p>
       </div>
     </div>
   );
