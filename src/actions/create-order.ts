@@ -2,14 +2,14 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation"; // 👈 1. IMPORTA ESTO
 import { getAuthenticatedTenant } from "@/lib/safe-action";
 import { orderSchema } from "@/lib/schemas";
 import { createLog } from "@/lib/create-log";
 
 export async function createOrder(formData: FormData) {
-  const tenant = await getAuthenticatedTenant(); // 🔒 Seguridad
+  const tenant = await getAuthenticatedTenant(); 
 
-  // Extraemos TODO del formulario para validarlo
   const rawData = {
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
@@ -24,7 +24,6 @@ export async function createOrder(formData: FormData) {
     fuelLevel: formData.get("fuelLevel"),
   };
 
-  // 🛡️ Validación Zod
   const result = orderSchema.safeParse(rawData);
 
   if (!result.success) {
@@ -34,9 +33,9 @@ export async function createOrder(formData: FormData) {
 
   const { firstName, lastName, taxId, email, phone, plate, brand, model, description, kilometer, fuelLevel } = result.data;
 
-  // 1. Buscar o Crear Cliente (Seguro)
+  // 1. Cliente
   let customer = await db.customer.findFirst({
-    where: { tenantId: tenant.id, taxId: taxId || "undefined" } // Evitamos buscar nulls
+    where: { tenantId: tenant.id, taxId: taxId || "undefined" }
   });
 
   if (!customer) {
@@ -45,7 +44,7 @@ export async function createOrder(formData: FormData) {
     });
   }
 
-  // 2. Buscar o Crear Vehículo (Seguro)
+  // 2. Vehículo
   let vehicle = await db.vehicle.findFirst({
     where: { tenantId: tenant.id, plateOrSerial: plate }
   });
@@ -65,13 +64,17 @@ export async function createOrder(formData: FormData) {
         kilometer,
         fuelLevel,
         status: "PENDING",
-        number: undefined, // Dejamos que autoincrement actúe
+        number: undefined,
     }
   });
 
-  // 📸 Log
+  // Log
   await createLog(tenant.id, "CREATE_ORDER", "WorkOrder", newOrder.id, `Orden #${newOrder.number} - ${plate}`);
 
+  // Limpiar caché
   revalidatePath(`/${tenant.slug}/dashboard`);
   revalidatePath(`/${tenant.slug}/orders`);
+
+  // 👇 2. EL PASO FINAL: Redirigir para forzar la actualización visual
+  redirect(`/${tenant.slug}/orders`);
 }

@@ -8,6 +8,10 @@ import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
+// 👇 AGREGA ESTAS 2 LÍNEAS AQUÍ MISMO:
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 interface Props {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ q?: string }>;
