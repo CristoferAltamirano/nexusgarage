@@ -6,20 +6,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Car, User, Search } from "lucide-react";
-import { createOrder } from "@/actions/create-order"; // Asegúrate que la ruta sea correcta
+import { Plus, Car, User, Search, Loader2 } from "lucide-react";
+import { createOrder } from "@/actions/create-order"; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner"; // Usamos Sonner para alertas bonitas
 
 interface Props {
   tenantId: string;
   slug: string;
-  vehicles: any[]; // Recibimos la lista de vehículos desde la página
+  vehicles: any[]; 
 }
 
 export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
   const [open, setOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // ESTADOS DEL FORMULARIO (Para poder auto-rellenar)
+  // Estados
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [taxId, setTaxId] = useState("");
@@ -30,23 +32,47 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
 
-  // Función mágica: Cuando seleccionas un vehículo de la lista
   const handleSelectVehicle = (vehicleId: string) => {
     const selected = vehicles.find((v) => v.id === vehicleId);
     
     if (selected) {
-      // 1. Rellenar Datos del Cliente
       setFirstName(selected.customer.firstName);
       setLastName(selected.customer.lastName);
       setTaxId(selected.customer.taxId || "");
       setEmail(selected.customer.email || "");
       setPhone(selected.customer.phone || "");
 
-      // 2. Rellenar Datos del Vehículo
       setPlate(selected.plateOrSerial);
       setBrand(selected.brand);
       setModel(selected.model);
     }
+  };
+
+  // Manejo del envío del formulario
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault(); // Evitamos recarga brusca
+      setIsLoading(true);
+
+      const formData = new FormData(e.currentTarget);
+      // Nos aseguramos que el tenantId vaya en el formData
+      formData.append("tenantId", tenantId);
+
+      try {
+          const res = await createOrder(formData);
+          
+          if (res.success) {
+              toast.success("Orden creada exitosamente");
+              setOpen(false);
+              // Limpieza opcional
+              setFirstName(""); setLastName(""); setPlate(""); setBrand(""); setModel(""); 
+          } else {
+              toast.error(res.error || "Error al crear la orden");
+          }
+      } catch (error) {
+          toast.error("Ocurrió un error inesperado");
+      } finally {
+          setIsLoading(false);
+      }
   };
 
   return (
@@ -61,7 +87,7 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
           <DialogTitle className="text-xl font-bold">Ingresar Orden de Trabajo</DialogTitle>
         </DialogHeader>
 
-        {/* --- BUSCADOR RÁPIDO --- */}
+        {/* BUSCADOR RÁPIDO */}
         <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-4">
           <Label className="text-xs font-bold text-slate-500 uppercase mb-2 block">
             ⚡ Carga Rápida (Vehículos Recientes)
@@ -71,22 +97,22 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
               <SelectValue placeholder="Buscar por Patente o Cliente..." />
             </SelectTrigger>
             <SelectContent>
-              {vehicles.map((v) => (
-                <SelectItem key={v.id} value={v.id}>
-                  <span className="font-bold">{v.plateOrSerial}</span> - {v.brand} ({v.customer.firstName} {v.customer.lastName})
-                </SelectItem>
-              ))}
+              {vehicles.length > 0 ? (
+                  vehicles.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      <span className="font-bold">{v.plateOrSerial}</span> - {v.brand} ({v.customer.firstName} {v.customer.lastName})
+                    </SelectItem>
+                  ))
+              ) : (
+                  <div className="p-2 text-sm text-slate-500 text-center">No hay vehículos recientes</div>
+              )}
             </SelectContent>
           </Select>
         </div>
 
-        <form action={async (formData) => {
-            await createOrder(formData);
-            setOpen(false);
-            // Limpiar formulario opcionalmente aquí
-        }} className="space-y-6">
+        <form onSubmit={onSubmit} className="space-y-6">
             
-            {/* Ocultamos IDs necesarios */}
+            {/* Input oculto de seguridad */}
             <input type="hidden" name="tenantId" value={tenantId} />
 
             {/* SECCIÓN CLIENTE */}
@@ -147,7 +173,7 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
                 </div>
             </div>
 
-            {/* SECCIÓN DETALLES INGRESO (Siempre vacíos al inicio) */}
+            {/* SECCIÓN DETALLES */}
             <div className="space-y-4">
                  <div className="flex items-center gap-2 text-indigo-600 border-b pb-2">
                     <Search className="h-4 w-4" />
@@ -172,8 +198,14 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
             </div>
 
             <div className="pt-4">
-                <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-12">
-                    Crear Orden
+                <Button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-12" disabled={isLoading}>
+                    {isLoading ? (
+                        <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creando...
+                        </>
+                    ) : (
+                        "Crear Orden"
+                    )}
                 </Button>
             </div>
         </form>

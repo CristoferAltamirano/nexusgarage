@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { deleteProduct } from "@/actions/delete-product"; // Asegúrate que la ruta coincida con el archivo que creaste
+import { deleteVehicle } from "@/actions/delete-vehicle";
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -19,22 +19,21 @@ import {
 
 interface Props {
   id: string;
-  tenantId: string; // 🔒 Dato clave para borrar en el taller correcto
+  tenantId: string;
   slug: string;
 }
 
-export function DeleteProductButton({ id, tenantId, slug }: Props) {
+export function DeleteVehicleButton({ id, tenantId, slug }: Props) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      // Pasamos el tenantId para asegurar que borramos en el taller actual
-      await deleteProduct(id, tenantId, slug);
-      toast.success("Ítem eliminado correctamente");
+      await deleteVehicle(id, tenantId, slug);
+      toast.success("Vehículo eliminado correctamente");
     } catch (error) {
       console.error(error);
-      toast.error("No se pudo eliminar el ítem");
+      toast.error("Error al eliminar el vehículo");
     } finally {
       setIsDeleting(false);
     }
@@ -43,7 +42,7 @@ export function DeleteProductButton({ id, tenantId, slug }: Props) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50">
+        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 hover:bg-red-50">
           {isDeleting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
@@ -56,16 +55,18 @@ export function DeleteProductButton({ id, tenantId, slug }: Props) {
         <AlertDialogHeader>
           <div className="flex items-center gap-3 text-red-600 mb-2">
             <AlertTriangle className="h-5 w-5" />
-            <AlertDialogTitle>¿Eliminar este ítem?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar vehículo?</AlertDialogTitle>
           </div>
           <AlertDialogDescription>
-            Esta acción no se puede deshacer inmediatamente. El ítem dejará de estar disponible para nuevas órdenes.
+            Esta acción enviará el vehículo a la papelera. Podrás restaurarlo después si contactas a soporte.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
           <AlertDialogAction 
-            onClick={(e) => {
+            // 🔥 AQUÍ ESTÁ EL FIX DE TYPESCRIPT:
+            // Agregamos el tipo ": React.MouseEvent"
+            onClick={(e: React.MouseEvent) => {
               e.preventDefault(); 
               handleDelete();
             }}

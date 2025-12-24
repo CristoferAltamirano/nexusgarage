@@ -6,7 +6,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createVehicle } from "@/actions/create-vehicle";
-import { CarFront } from "lucide-react";
+// 🔥 1. Agregamos Loader2 para la animación
+import { CarFront, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 interface Props {
   tenantId: string;
@@ -16,6 +18,23 @@ interface Props {
 
 export function CreateVehicleDialog({ tenantId, slug, customers }: Props) {
   const [open, setOpen] = useState(false);
+  // 🔥 2. Estado para controlar la carga
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 🔥 3. Función para manejar el envío con animación
+  async function handleSubmit(formData: FormData) {
+    setIsLoading(true);
+    try {
+        await createVehicle(formData);
+        toast.success("Vehículo registrado correctamente");
+        setOpen(false);
+    } catch (error) {
+        toast.error("Error al registrar vehículo");
+        console.error(error);
+    } finally {
+        setIsLoading(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -30,7 +49,7 @@ export function CreateVehicleDialog({ tenantId, slug, customers }: Props) {
           <DialogTitle>Registrar Vehículo</DialogTitle>
         </DialogHeader>
 
-        <form action={async (formData) => { await createVehicle(formData); setOpen(false); }} className="grid gap-4 py-4">
+        <form action={handleSubmit} className="grid gap-4 py-4">
           <input type="hidden" name="tenantId" value={tenantId} />
           <input type="hidden" name="slug" value={slug} />
 
@@ -78,7 +97,21 @@ export function CreateVehicleDialog({ tenantId, slug, customers }: Props) {
             <Input name="color" placeholder="Rojo metalizado" />
           </div>
 
-          <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700 w-full mt-2">Guardar Vehículo</Button>
+          {/* 🔥 4. Botón con estado de carga */}
+          <Button 
+            type="submit" 
+            className="bg-indigo-600 hover:bg-indigo-700 w-full mt-2"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+                <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Guardando...
+                </>
+            ) : (
+                "Guardar Vehículo"
+            )}
+          </Button>
         </form>
       </DialogContent>
     </Dialog>

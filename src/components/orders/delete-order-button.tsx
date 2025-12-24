@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { deleteProduct } from "@/actions/delete-product"; // Asegúrate que la ruta coincida con el archivo que creaste
+import { deleteOrder } from "@/actions/delete-order"; // Importamos la acción de órdenes
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -19,22 +19,21 @@ import {
 
 interface Props {
   id: string;
-  tenantId: string; // 🔒 Dato clave para borrar en el taller correcto
+  tenantId: string;
   slug: string;
 }
 
-export function DeleteProductButton({ id, tenantId, slug }: Props) {
+export function DeleteOrderButton({ id, tenantId, slug }: Props) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      // Pasamos el tenantId para asegurar que borramos en el taller actual
-      await deleteProduct(id, tenantId, slug);
-      toast.success("Ítem eliminado correctamente");
+      await deleteOrder(id, tenantId, slug);
+      toast.success("Orden eliminada correctamente");
     } catch (error) {
       console.error(error);
-      toast.error("No se pudo eliminar el ítem");
+      toast.error("Error al eliminar la orden");
     } finally {
       setIsDeleting(false);
     }
@@ -56,16 +55,16 @@ export function DeleteProductButton({ id, tenantId, slug }: Props) {
         <AlertDialogHeader>
           <div className="flex items-center gap-3 text-red-600 mb-2">
             <AlertTriangle className="h-5 w-5" />
-            <AlertDialogTitle>¿Eliminar este ítem?</AlertDialogTitle>
+            <AlertDialogTitle>¿Eliminar Orden de Trabajo?</AlertDialogTitle>
           </div>
           <AlertDialogDescription>
-            Esta acción no se puede deshacer inmediatamente. El ítem dejará de estar disponible para nuevas órdenes.
+            Esta orden dejará de ser visible en el listado activo.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
           <AlertDialogAction 
-            onClick={(e) => {
+            onClick={(e: React.MouseEvent) => {
               e.preventDefault(); 
               handleDelete();
             }}

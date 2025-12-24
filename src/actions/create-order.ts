@@ -2,17 +2,31 @@
 
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { getAuthenticatedTenant } from "@/lib/safe-action";
+import { auth } from "@clerk/nextjs/server";
 import { orderSchema } from "@/lib/schemas";
 import { createLog } from "@/lib/create-log";
 
 export async function createOrder(formData: FormData) {
   try {
-    const tenant = await getAuthenticatedTenant(); 
+    // 1. OBTENER USUARIO
+    const { userId } = await auth();
+    if (!userId) throw new Error("No autorizado");
 
-    // 1. CONVERSIÓN DE DATOS (Aquí estaba el error)
-    // Convertimos "kilometer" y "fuelLevel" a números reales.
+    // 2. OBTENER EL TALLER CORRECTO (Desde el Formulario, NO adivinando)
+    const formTenantId = formData.get("tenantId") as string;
+    
+    // 🔒 SEGURIDAD CRÍTICA:
+    // Verificamos: ¿Existe este taller Y este usuario es su dueño?
+    const tenant = await db.tenant.findUnique({
+        where: {
+            id: formTenantId,
+            userId: userId 
+        }
+    });
+
+    if (!tenant) throw new Error("Taller no encontrado o no autorizado");
+
+    // 3. CONVERSIÓN DE DATOS
     const rawData = {
       firstName: formData.get("firstName"),
       lastName: formData.get("lastName"),
@@ -23,26 +37,22 @@ export async function createOrder(formData: FormData) {
       brand: formData.get("brand"),
       model: formData.get("model"),
       description: formData.get("description"),
-      // 👇 La magia: Si viene vacío ponemos 0, si viene texto lo hacemos número
       kilometer: Number(formData.get("kilometer") || 0), 
       fuelLevel: Number(formData.get("fuelLevel") || 0),
     };
 
-    console.log("📦 Datos recibidos:", rawData); // Esto saldrá en tu terminal
-
-    // 2. Validación Zod
     const result = orderSchema.safeParse(rawData);
 
     if (!result.success) {
       console.error("❌ Error de Validación:", result.error.flatten());
-      return { success: false, error: "Datos inválidos (Revisa la terminal)" };
+      return { success: false, error: "Datos inválidos" };
     }
 
     const { firstName, lastName, taxId, email, phone, plate, brand, model, description, kilometer, fuelLevel } = result.data;
 
-    // 3. Lógica de Base de Datos
-    
-    // Buscar/Crear Cliente
+    // 4. LÓGICA DE BASE DE DATOS (Usando el tenant.id verificado)
+
+    // Buscar/Crear Cliente en ESTE taller específico
     let customer = await db.customer.findFirst({
       where: { tenantId: tenant.id, taxId: taxId || "undefined" }
     });
@@ -53,7 +63,7 @@ export async function createOrder(formData: FormData) {
       });
     }
 
-    // Buscar/Crear Vehículo
+    // Buscar/Crear Vehículo en ESTE taller específico
     let vehicle = await db.vehicle.findFirst({
       where: { tenantId: tenant.id, plateOrSerial: plate }
     });
@@ -76,22 +86,19 @@ export async function createOrder(formData: FormData) {
       }
     });
 
-    console.log("✅ Orden Creada con ID:", newOrder.id);
+    console.log(`✅ Orden #${newOrder.number} creada correctamente en: ${tenant.name}`);
 
     // Logs y Revalidación
     await createLog(tenant.id, "CREATE_ORDER", "WorkOrder", newOrder.id, `Orden #${newOrder.number} - ${plate}`);
 
+    // Revalidamos solo la ruta del taller actual
     revalidatePath(`/${tenant.slug}/dashboard`);
     revalidatePath(`/${tenant.slug}/orders`);
+    
+    return { success: true };
 
   } catch (error) {
-    console.error("🔥 Error Fatal en createOrder:", error);
-    return { success: false, error: "Error interno del servidor" };
+    console.error("🔥 Error en createOrder:", error);
+    return { success: false, error: "Error interno al crear la orden" };
   }
-
-  // Redirección fuera del try-catch (Next.js lo requiere así)
-  // OJO: Usamos slug del formulario o lo volvemos a buscar, 
-  // pero para asegurar usaremos el tenant que ya tenemos autenticado.
-  const tenant = await getAuthenticatedTenant(); 
-  redirect(`/${tenant.slug}/orders`);
 }

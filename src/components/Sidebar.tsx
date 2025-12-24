@@ -51,13 +51,16 @@ export function Sidebar({ slug }: SidebarProps) {
       label: "Inventario",
       icon: Package,
       href: `/${slug}/settings/catalog`,
+      // Mantenemos la lógica de inventario igual
       active: pathname.includes(`/${slug}/settings/catalog`),
     },
     {
       label: "Configuración",
       icon: Settings,
       href: `/${slug}/settings`,
-      active: pathname === `/${slug}/settings`,
+      // 🔥 AQUÍ ESTÁ EL FIX (PUNTO 2):
+      // Decimos: "Es activo si incluye settings PERO NO si incluye catalog"
+      active: pathname.includes(`/${slug}/settings`) && !pathname.includes(`/${slug}/settings/catalog`),
     },
   ];
 

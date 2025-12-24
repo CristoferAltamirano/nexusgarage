@@ -58,7 +58,7 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.141 0.005 285.823);
 
-  /* --- CAMBIO: NARANJA MECÁNICO --- */
+  /* --- NARANJA MECÁNICO --- */
   --primary: oklch(0.623 0.214 41.24); /* Naranja intenso */
   --primary-foreground: oklch(0.985 0 0); /* Texto blanco */
 
@@ -79,7 +79,7 @@
   --ring: oklch(0.623 0.214 41.24); /* Anillo de foco naranja */
 
   /* Gráficos */
-  --chart-1: oklch(0.623 0.214 41.24); /* Naranja principal */
+  --chart-1: oklch(0.623 0.214 41.24);
   --chart-2: oklch(0.488 0.243 264.376);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
@@ -88,7 +88,7 @@
   /* Sidebar */
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.623 0.214 41.24); /* Naranja */
+  --sidebar-primary: oklch(0.623 0.214 41.24);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.967 0.001 286.375);
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
@@ -106,7 +106,7 @@
   --popover: oklch(0.21 0.006 285.885);
   --popover-foreground: oklch(0.985 0 0);
 
-  /* Naranja en modo oscuro (un poco más claro para contraste) */
+  /* Naranja en modo oscuro */
   --primary: oklch(0.7 0.19 41.24); 
   --primary-foreground: oklch(0.141 0.005 285.823);
 
@@ -142,12 +142,45 @@
   --sidebar-ring: oklch(0.7 0.19 41.24);
 }
 
+/* =========================================
+   ESTILOS BASE GLOBALES
+   ========================================= */
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply bg-background text-foreground;
+    /* Esto previene que una tabla ancha empuje toda la página horizontalmente en móviles */
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  /* Asegura que imágenes y videos nunca rompan el layout en móviles */
+  img, video {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* =========================================
+   UTILIDADES
+   ========================================= */
+@layer utilities {
+  /* Esta clase envuelve las tablas para permitir scroll horizontal 
+     suave en dispositivos táctiles sin romper el layout general.
+  */
+  .table-responsive-wrapper {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch; /* Scroll suave en iOS */
+    white-space: nowrap; /* Mantiene celdas alineadas */
   }
 }
 
@@ -155,49 +188,43 @@
    ESTILOS PARA IMPRESIÓN PROFESIONAL
    ========================================= */
 @media print {
-  /* 1. CONFIGURACIÓN DE LA HOJA */
   @page {
-    margin: 1.5cm; /* Márgenes limpios alrededor de la hoja */
-    size: auto;    /* Intenta ocultar encabezados/pies de página del navegador */
+    margin: 1.5cm;
+    size: auto;
   }
 
   body {
     font-family: sans-serif;
-    font-size: 11pt; /* Tamaño de letra óptimo para lectura en papel */
+    font-size: 11pt;
     color: black !important;
     background: white !important;
     -webkit-print-color-adjust: exact !important; 
     print-color-adjust: exact !important;
+    overflow: visible !important; /* Permitir desborde en impresión si es necesario */
   }
 
-  /* 2. OCULTAR LO QUE NO SIRVE EN PAPEL */
-  aside, nav, header, .sidebar, /* Barras de navegación */
-  button, form, input, select, /* Elementos interactivos */
-  .no-print, a.print\:hidden, .print\:hidden { /* Clases utilitarias */
+  aside, nav, header, .sidebar, button, form, input, select, .no-print, .print\:hidden {
     display: none !important;
   }
 
-  /* 3. REPARAR EL LAYOUT (DISEÑO A 2 COLUMNAS) */
-  /* Forzamos el grid principal para que la tabla y los totales queden lado a lado */
+  /* Layout de factura a 2 columnas para impresión */
   .grid.gap-6.md\:grid-cols-3 {
     display: grid !important;
-    grid-template-columns: 65% 30% !important; /* 65% tabla, 30% totales */
+    grid-template-columns: 65% 30% !important;
     gap: 5% !important;
     align-items: start !important;
     width: 100% !important;
   }
 
-  /* Aseguramos que el contenido use todo el ancho disponible */
   main, .flex-1, div.p-8 {
     margin: 0 !important;
     padding: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
   }
-  .w-64 { display: none !important; } /* Ocultar sidebar fijo */
+  .w-64 { display: none !important; }
 
-  /* 4. LIMPIEZA VISUAL (QUITAR ESTILOS WEB) */
-  /* Quitamos bordes y fondos de las tarjetas para que se vea limpio */
+  /* Limpieza visual de tarjetas para impresión */
   .card, .border, .shadow-sm, .bg-slate-900, .bg-slate-100, .bg-slate-50, .rounded-lg {
     border: none !important;
     box-shadow: none !important;
@@ -207,7 +234,7 @@
     padding-right: 0 !important;
   }
 
-  /* Agregamos líneas simples solo donde importa (Tablas) */
+  /* Estilos de tabla para impresión */
   table {
     border-collapse: collapse !important;
     width: 100% !important;
@@ -223,16 +250,14 @@
     padding: 8px 0 !important;
   }
 
-  /* Estilo especial para la caja de Totales (Línea arriba) */
   .bg-slate-900 {
     border-top: 3px solid black !important; 
     padding-top: 10px !important;
   }
   .separator, .bg-slate-700 {
-    background-color: black !important; /* Separadores negros */
+    background-color: black !important;
   }
 
-  /* 5. TIPOGRAFÍA */
   h2.text-3xl { font-size: 24pt !important; margin-bottom: 5px !important; }
   .text-xl { font-size: 16pt !important; } 
   .text-muted-foreground { color: #333 !important; } 

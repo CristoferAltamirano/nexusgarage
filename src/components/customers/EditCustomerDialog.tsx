@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createCustomer } from "@/actions/create-customer"; // Asegúrate que la ruta sea correcta
+import { updateCustomer } from "@/actions/update-customer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,17 +13,18 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogDescription
 } from "@/components/ui/dialog";
-import { UserPlus, User, Phone, Mail, MapPin, Building2, FileBadge, Loader2 } from "lucide-react";
+import { User, Phone, Mail, MapPin, Building2, FileBadge, Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 interface Props {
+  customer: any;
   tenantId: string;
   slug: string;
 }
 
-export function CreateCustomerDialog({ tenantId, slug }: Props) {
+export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -33,22 +34,23 @@ export function CreateCustomerDialog({ tenantId, slug }: Props) {
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
+    formData.append("id", customer.id);
     formData.append("tenantId", tenantId);
     formData.append("slug", slug);
 
+    // Manejo manual del checkbox si no se envía marcado
+    if (!formData.get("isCompany")) {
+        formData.append("isCompany", "off");
+    }
+
     try {
-      // Llamamos a la server action
-      await createCustomer(formData);
-      
-      // Si sale bien:
-      toast.success("Cliente registrado correctamente");
-      setOpen(false); // Cerramos modal
-      e.currentTarget.reset(); // Limpiamos formulario
-      router.refresh(); // Refrescamos la vista de fondo
+      await updateCustomer(formData);
+      toast.success("Cliente actualizado correctamente");
+      setOpen(false);
+      router.refresh();
     } catch (error) {
-      // Si sale mal (el error viene de la server action)
       console.error(error);
-      toast.error("Error al registrar cliente. Verifica los datos.");
+      toast.error("Error al actualizar cliente");
     } finally {
       setIsLoading(false);
     }
@@ -56,15 +58,20 @@ export function CreateCustomerDialog({ tenantId, slug }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
+      {/* GATILLO: El botón del lápiz */}
       <DialogTrigger asChild>
-        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
-          <UserPlus className="mr-2 h-4 w-4" /> Nuevo Cliente
-        </Button>
+        <Badge
+          variant="outline"
+          className="h-8 w-8 p-0 flex items-center justify-center border-slate-200 hover:bg-slate-50 hover:text-indigo-600 cursor-pointer transition-colors"
+        >
+          <Pencil className="h-3.5 w-3.5 text-slate-400 hover:text-indigo-600" />
+        </Badge>
       </DialogTrigger>
+
+      {/* CONTENIDO DEL MODAL */}
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-slate-900">Registrar Nuevo Cliente</DialogTitle>
-          <DialogDescription>Ingresa los datos del cliente para agregarlo a tu cartera.</DialogDescription>
+          <DialogTitle>Editar Cliente</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4 mt-2">
@@ -72,84 +79,111 @@ export function CreateCustomerDialog({ tenantId, slug }: Props) {
             {/* Grid Nombre y Apellido */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="firstName">Nombre</Label>
+                <Label>Nombre</Label>
                 <div className="relative">
                   <User className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                  <Input id="firstName" name="firstName" placeholder="Juan" className="pl-9" required />
+                  <Input 
+                    name="firstName" 
+                    defaultValue={customer.firstName} 
+                    className="pl-9" 
+                    required 
+                  />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="lastName">Apellido</Label>
-                <Input id="lastName" name="lastName" placeholder="Pérez" required />
+                <Label>Apellido</Label>
+                <Input 
+                    name="lastName" 
+                    defaultValue={customer.lastName} 
+                    required 
+                />
               </div>
             </div>
 
             {/* Grid RUT y Teléfono */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="taxId">RUT / DNI</Label>
+                <Label>RUT / DNI</Label>
                 <div className="relative">
                   <FileBadge className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                  <Input id="taxId" name="taxId" placeholder="12.345.678-9" className="pl-9" required />
+                  <Input 
+                    name="taxId" 
+                    defaultValue={customer.taxId} 
+                    className="pl-9" 
+                    required 
+                  />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Teléfono</Label>
+                <Label>Teléfono</Label>
                 <div className="relative">
                   <Phone className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                  <Input id="phone" name="phone" placeholder="+56 9..." className="pl-9" required />
+                  <Input 
+                    name="phone" 
+                    defaultValue={customer.phone} 
+                    className="pl-9" 
+                    required 
+                  />
                 </div>
               </div>
             </div>
 
             {/* Email */}
             <div className="space-y-2">
-              <Label htmlFor="email">Email (Opcional)</Label>
+              <Label>Email (Opcional)</Label>
               <div className="relative">
                 <Mail className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                <Input id="email" name="email" type="email" placeholder="juan@ejemplo.com" className="pl-9" />
+                <Input 
+                    name="email" 
+                    type="email" 
+                    defaultValue={customer.email} 
+                    className="pl-9" 
+                />
               </div>
             </div>
 
             {/* Dirección */}
             <div className="space-y-2">
-              <Label htmlFor="address">Dirección (Opcional)</Label>
+              <Label>Dirección (Opcional)</Label>
               <div className="relative">
                 <MapPin className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-                <Input id="address" name="address" placeholder="Av. Principal 123" className="pl-9" />
+                <Input 
+                    name="address" 
+                    defaultValue={customer.address} 
+                    className="pl-9" 
+                />
               </div>
             </div>
 
-            {/* Checkbox Empresa con estilo */}
+            {/* Checkbox Empresa */}
             <div className="flex items-center space-x-2 border p-3 rounded-md bg-slate-50 mt-2">
-              <Checkbox id="isCompany" name="isCompany" className="data-[state=checked]:bg-indigo-600 border-slate-300" />
+              <Checkbox id="isCompany" name="isCompany" defaultChecked={customer.isCompany} />
               <div className="grid gap-1.5 leading-none">
-                <Label htmlFor="isCompany" className="flex items-center gap-2 cursor-pointer text-sm font-medium text-slate-700">
-                  <Building2 className="h-4 w-4 text-indigo-600" />
+                <Label htmlFor="isCompany" className="flex items-center gap-2 cursor-pointer text-sm font-medium">
+                  <Building2 className="h-4 w-4 text-slate-500" />
                   Es una Empresa
                 </Label>
-                <p className="text-[11px] text-slate-500 font-normal">
-                  Marca esto si el cliente requiere factura a razón social.
-                </p>
+                <p className="text-[11px] text-slate-500">Marca esto si requiere factura a razón social.</p>
               </div>
             </div>
 
-            {/* Botón de Guardar con Loader */}
+            {/* Botón de Guardar */}
             <div className="pt-4">
                 <Button 
                     type="submit" 
-                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium h-11"
+                    className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium h-10"
                     disabled={isLoading}
                 >
                     {isLoading ? (
                         <>
-                            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Registrando...
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...
                         </>
                     ) : (
-                        "Registrar Cliente"
+                        "Guardar Cambios"
                     )}
                 </Button>
             </div>
+
         </form>
       </DialogContent>
     </Dialog>
