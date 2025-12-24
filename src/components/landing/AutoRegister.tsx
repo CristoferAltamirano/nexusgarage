@@ -1,7 +1,8 @@
-"use client"
+"use client";
 
 import { useEffect, useRef } from "react";
-import { registerTenant } from "@/actions/register-tenant";
+// ✅ CORRECCIÓN: Ruta actualizada al archivo maestro de autenticación
+import { registerTenant } from "@/actions/auth"; 
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,11 +20,12 @@ export function AutoRegister({ name }: { name: string }) {
             formData.append("name", name);
             
             try {
+                // ✅ Ahora usa la acción importada desde @/actions/auth
                 await registerTenant(formData);
             } catch (error) {
-                // CORRECCIÓN: Verificamos si es el "error" de redirección
+                // CORRECCIÓN: Verificamos si es el "error" de redirección de Next.js
                 if ((error as Error).message === "NEXT_REDIRECT") {
-                    return; // Todo bien, nos estamos yendo al dashboard
+                    return; // Todo bien, la redirección al dashboard está en curso
                 }
                 
                 console.error(error);
