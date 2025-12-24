@@ -7,8 +7,9 @@ import { createLog } from "@/lib/create-log";
 
 /**
  * GUARDAR CLIENTE (CREAR O ACTUALIZAR)
+ * Renombrado a createCustomer para coincidir con los componentes
  */
-export async function saveCustomer(formData: FormData) {
+export async function createCustomer(formData: FormData) {
   try {
     const user = await currentUser();
     if (!user) return { success: false, error: "No autorizado" };
@@ -16,15 +17,13 @@ export async function saveCustomer(formData: FormData) {
     const formTenantId = formData.get("tenantId")?.toString();
     if (!formTenantId) return { success: false, error: "Falta el ID del taller" };
 
-    // ✅ CORRECCIÓN DE SEGURIDAD:
-    // Ahora preguntamos: "¿Es el ID del taller correcto? Y ADEMÁS:
-    // ¿Es el usuario el DUEÑO (userId) O es parte del equipo (users)?"
+    // ✅ VERIFICACIÓN DE SEGURIDAD: Dueño o Miembro del equipo
     const tenant = await db.tenant.findFirst({
       where: {
         id: formTenantId,
         OR: [
-            { userId: user.id },                 // 1. Es el Dueño directo
-            { users: { some: { id: user.id } } } // 2. O es un Miembro del equipo
+            { userId: user.id },                 // Es el Dueño
+            { users: { some: { id: user.id } } } // Es Miembro del equipo
         ]
       }
     });
@@ -63,14 +62,14 @@ export async function saveCustomer(formData: FormData) {
       let res;
 
       if (customerId) {
-        // ACTUALIZAR
+        // MODO ACTUALIZAR
         res = await tx.customer.update({
           where: { id: customerId },
           data: dataToSave
         });
         await createLog(tenant.id, "UPDATE_CUSTOMER", "Customer", res.id, `Actualizado: ${res.firstName}`);
       } else {
-        // CREAR
+        // MODO CREAR
         res = await tx.customer.create({
           data: dataToSave
         });
@@ -80,6 +79,7 @@ export async function saveCustomer(formData: FormData) {
       return res;
     });
 
+    // REVALIDACIÓN DE RUTAS
     revalidatePath(`/${tenant.slug}/customers`);
     
     if (customerId) {
@@ -88,13 +88,13 @@ export async function saveCustomer(formData: FormData) {
 
     return { success: true, id: customer.id };
   } catch (error: any) {
-    console.error("Error saveCustomer:", error);
+    console.error("Error createCustomer:", error);
     return { success: false, error: error.message || "Error al guardar" };
   }
 }
 
 /**
- * ELIMINAR CLIENTE
+ * ELIMINAR CLIENTE (SOFT DELETE)
  */
 export async function deleteCustomer(customerId: string) {
   try {
@@ -107,8 +107,7 @@ export async function deleteCustomer(customerId: string) {
 
     if (!customer) return { success: false, error: "Cliente no encontrado" };
 
-    // ✅ MISMA CORRECCIÓN PARA ELIMINAR:
-    // Verificar si es Dueño O Empleado del taller al que pertenece el cliente
+    // Verificar permisos
     const tenant = await db.tenant.findFirst({
         where: {
             id: customer.tenantId,
@@ -122,11 +121,13 @@ export async function deleteCustomer(customerId: string) {
     if (!tenant) return { success: false, error: "No tienes permiso para eliminar este cliente" };
 
     await db.$transaction(async (tx) => {
+      // Marcar cliente como eliminado
       await tx.customer.update({
         where: { id: customerId },
         data: { deletedAt: new Date() }
       });
 
+      // Marcar sus vehículos como eliminados también
       await tx.vehicle.updateMany({
         where: { customerId, tenantId: tenant.id },
         data: { deletedAt: new Date() }

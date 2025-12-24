@@ -10,7 +10,6 @@ import { getAuthenticatedTenant } from "@/lib/safe-action";
 
 /**
  * 1. REGISTRO DE NUEVO TALLER (TENANT)
- * Se usa durante el onboarding inicial.
  */
 export async function registerTenant(formData: FormData) {
   const { userId } = await auth();
@@ -18,7 +17,6 @@ export async function registerTenant(formData: FormData) {
 
   if (!name) return { success: false, error: "El nombre es obligatorio" };
 
-  // Si no hay usuario, redirigimos a login guardando el nombre intentado
   if (!userId) {
     const encodedName = encodeURIComponent(name);
     redirect(`/?pending_tenant=${encodedName}`);
@@ -27,7 +25,6 @@ export async function registerTenant(formData: FormData) {
   const user = await currentUser();
   if (!user) return { success: false, error: "Usuario no encontrado" };
 
-  // Generar Slug limpio (ej: "Taller Juan" -> "taller-juan")
   const baseSlug = name
     .toLowerCase()
     .normalize("NFD")
@@ -37,13 +34,11 @@ export async function registerTenant(formData: FormData) {
 
   try {
     const finalSlug = await db.$transaction(async (tx) => {
-      // Verificar disponibilidad de slug
       const existing = await tx.tenant.findUnique({ where: { slug: baseSlug } });
       const slugToUse = existing 
         ? `${baseSlug}-${Math.floor(1000 + Math.random() * 9000)}` 
         : baseSlug;
 
-      // Crear el Tenant (Taller)
       const tenant = await tx.tenant.create({
         data: {
           name,
@@ -52,7 +47,6 @@ export async function registerTenant(formData: FormData) {
         }
       });
 
-      // Sincronizar usuario Clerk con nuestra tabla local User
       await tx.user.create({
         data: {
           id: user.id,
@@ -75,7 +69,7 @@ export async function registerTenant(formData: FormData) {
 
 /**
  * 2. ACTUALIZACIÓN DE CONFIGURACIÓN (SETTINGS)
- * Se usa desde el panel de configuración del taller.
+ * He agregado el soporte para taxRate (IVA)
  */
 export async function updateSettings(formData: FormData) {
   const tenant = await getAuthenticatedTenant();
@@ -83,6 +77,10 @@ export async function updateSettings(formData: FormData) {
 
   try {
     const rawData = Object.fromEntries(formData.entries());
+    
+    // Capturamos el taxRate manualmente antes de validar
+    const taxRate = rawData.taxRate ? parseFloat(rawData.taxRate.toString()) : 0;
+
     const result = settingsSchema.safeParse(rawData);
 
     if (!result.success) {
@@ -101,14 +99,16 @@ export async function updateSettings(formData: FormData) {
           phone: result.data.phone ?? "",
           email: result.data.email ?? "",
           website: result.data.website ?? "",
-          logoUrl: rawData.logoUrl?.toString() || ""
+          logoUrl: rawData.logoUrl?.toString() || "",
+          taxRate: taxRate // ✅ ACTUALIZADO: Guardamos el IVA en la base de datos
         }
       });
 
-      await createLog(tenant.id, "UPDATE_SETTINGS", "Tenant", tenant.id, "Actualización de perfil corporativo");
+      await createLog(tenant.id, "UPDATE_SETTINGS", "Tenant", tenant.id, "Actualización de perfil corporativo e impuestos");
     });
 
     revalidatePath(targetPath);
+    revalidatePath(`/${tenant.slug}/orders/[orderId]`); // Revalidamos órdenes para ver el nuevo IVA
     targetPath += "?success=true";
 
   } catch (error) {
@@ -116,6 +116,5 @@ export async function updateSettings(formData: FormData) {
     return { success: false, error: "No se pudieron guardar los cambios" };
   }
 
-  // El redirect siempre fuera del try/catch
   redirect(targetPath);
 }

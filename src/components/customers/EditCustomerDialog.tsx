@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation"; // 1. Importamos el router
+import { useRouter } from "next/navigation";
 import { 
   Dialog, 
   DialogContent, 
@@ -16,8 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Pencil, User, Loader2, Mail, Phone, MapPin, Save, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
-// ✅ Importación corregida al archivo maestro consolidado
-import { saveCustomer } from "@/actions/customers";
+// ✅ Importación corregida: Usamos createCustomer que es el export real en tu actions/customers.ts
+import { createCustomer } from "@/actions/customers";
 
 interface Props {
   customer: any; 
@@ -29,10 +29,10 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Estado para controlar el switch de empresa (igual que en crear)
+  // Estado para controlar el switch de empresa
   const [isCompany, setIsCompany] = useState(customer.isCompany || false);
   
-  const router = useRouter(); // 2. Inicializamos el router
+  const router = useRouter();
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -40,23 +40,26 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
 
     const formData = new FormData(e.currentTarget);
     
-    // Metadatos críticos
+    // Metadatos críticos para la acción
     formData.append("id", customer.id);
     formData.append("tenantId", tenantId);
     formData.append("slug", slug);
 
-    // Asegurar envío del checkbox
-    if (isCompany) formData.set("isCompany", "on");
+    // Sincronizar el valor del checkbox manualmente ya que los forms nativos
+    // a veces no envían el valor si no está marcado.
+    if (isCompany) {
+        formData.set("isCompany", "on");
+    } else {
+        formData.delete("isCompany");
+    }
 
     try {
-      const res = await saveCustomer(formData);
+      // ✅ Llamada a la acción corregida
+      const res = await createCustomer(formData);
 
       if (res.success) {
         toast.success("Cliente actualizado correctamente");
-        
-        // 3. 🔥 ¡Esto faltaba! Refresca la tabla de atrás
-        router.refresh();
-        
+        router.refresh(); // Refresca los datos del servidor sin recargar la página
         setOpen(false);
       } else {
         toast.error(res.error || "Error al actualizar el cliente");
@@ -103,7 +106,6 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            {/* Si es empresa, ocupa todo el ancho. Si no, comparte con Apellido */}
             <div className={isCompany ? "col-span-2 space-y-2" : "space-y-2"}>
               <Label className="text-xs font-bold uppercase text-slate-500">
                 {isCompany ? "Razón Social" : "Nombre"}
@@ -112,6 +114,7 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
                 name="firstName" 
                 defaultValue={customer.firstName} 
                 required 
+                disabled={isLoading}
               />
             </div>
             
@@ -122,6 +125,7 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
                     name="lastName" 
                     defaultValue={customer.lastName} 
                     required 
+                    disabled={isLoading}
                 />
                 </div>
             )}
@@ -133,6 +137,7 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
               <Input 
                 name="taxId" 
                 defaultValue={customer.taxId || ""} 
+                disabled={isLoading}
               />
             </div>
             <div className="space-y-2">
@@ -143,6 +148,7 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
                 name="phone" 
                 defaultValue={customer.phone} 
                 required 
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -155,6 +161,7 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
               name="email" 
               type="email" 
               defaultValue={customer.email || ""} 
+              disabled={isLoading}
             />
           </div>
 
@@ -165,10 +172,10 @@ export function EditCustomerDialog({ customer, tenantId, slug }: Props) {
             <Input 
               name="address" 
               defaultValue={customer.address || ""} 
+              disabled={isLoading}
             />
           </div>
 
-          {/* 🛠️ ARREGLO DE BOTONES: GRID DE 2 COLUMNAS */}
           <div className="pt-4 grid grid-cols-2 gap-3">
             <Button 
               type="button" 

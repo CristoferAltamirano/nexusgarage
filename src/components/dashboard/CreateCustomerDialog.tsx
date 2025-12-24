@@ -2,21 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-// ✅ Importación vinculada al archivo maestro de acciones
-import { saveCustomer } from "@/actions/customers"; 
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, User, Loader2, Mail, Phone, MapPin } from "lucide-react";
-import { toast } from "sonner";
+import { UserPlus, Loader2, Building2, User } from "lucide-react";
+import { toast } from "sonner"; 
+// ✅ CORRECCIÓN: Importamos createCustomer que es el export real en tu actions/customers.ts
+import { createCustomer } from "@/actions/customers";
 
 interface Props {
   tenantId: string;
@@ -26,119 +26,180 @@ interface Props {
 export function CreateCustomerDialog({ tenantId, slug }: Props) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter(); // Hook para refrescar la página
+  // Estado para controlar si es empresa y cambiar los labels del formulario
+  const [isCompany, setIsCompany] = useState(false);
+  
+  const router = useRouter(); 
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    
-    // ✅ Metadatos críticos para que el servidor identifique el taller y la ruta a refrescar
+    // Aseguramos que los datos de contexto viajen
     formData.append("tenantId", tenantId);
     formData.append("slug", slug);
+    
+    // Sincronizar el valor del checkbox manualmente
+    if (isCompany) {
+        formData.set("isCompany", "on");
+    } else {
+        formData.delete("isCompany");
+    }
 
     try {
-      const res = await saveCustomer(formData);
+        // ✅ CORRECCIÓN: Usamos createCustomer
+        const res = await createCustomer(formData);
 
-      if (res.success) {
-        toast.success("Cliente registrado con éxito");
-        setOpen(false);
-        (e.target as HTMLFormElement).reset(); // Limpia el formulario tras el éxito
-        router.refresh(); // Refresca los datos en pantalla
-      } else {
-        toast.error(res.error || "Error al registrar cliente");
-      }
+        if (res.success) {
+            toast.success("Cliente guardado exitosamente");
+            
+            // Refrescamos la data de la página de atrás
+            router.refresh(); 
+
+            // Cerramos el modal y limpiamos
+            setOpen(false);
+            (e.target as HTMLFormElement).reset();
+            setIsCompany(false); // Reseteamos el switch de empresa
+        } else {
+            toast.error(res.error || "Error al guardar el cliente");
+        }
+
     } catch (error) {
-      console.error("Error al registrar cliente:", error);
-      toast.error("Ocurrió un error inesperado de red");
+        console.error(error);
+        toast.error("Ocurrió un error inesperado de conexión");
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
-  };
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md">
-          <Plus className="mr-2 h-4 w-4" /> Nuevo Cliente
+        <Button className="bg-indigo-600 font-medium text-white shadow-sm hover:bg-indigo-700">
+          <UserPlus className="mr-2 h-4 w-4" /> Nuevo Cliente
         </Button>
       </DialogTrigger>
       
-      <DialogContent className="sm:max-w-[500px]">
+      {/* ✅ CORRECCIÓN TAILWIND: sm:max-w-xl es la clase canónica para 600px aprox. */}
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-            <User className="h-6 w-6 text-indigo-600" />
-            Registro de Cliente
+          <DialogTitle className="flex items-center gap-2">
+             {isCompany ? <Building2 className="h-5 w-5 text-indigo-600"/> : <User className="h-5 w-5 text-indigo-600"/>}
+             Registrar Nuevo Cliente
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="space-y-4 pt-4">
-          {/* IDENTIFICACIÓN DE EMPRESA */}
-          <div className="flex items-center space-x-2 bg-slate-50 p-3 rounded-lg border border-slate-100">
-            <Checkbox id="isCompany" name="isCompany" />
-            <label htmlFor="isCompany" className="text-sm font-medium cursor-pointer select-none">
-              ¿Es una Empresa / Persona Jurídica?
-            </label>
-          </div>
-
-          {/* NOMBRE Y APELLIDO */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-slate-500 uppercase tracking-tighter">Nombre / Razón Social</Label>
-              <Input name="firstName" required placeholder="Ej: Juan" />
+        <form onSubmit={onSubmit} className="mt-2 space-y-5">
+            
+            {/* SWITCH TIPO DE CLIENTE */}
+            <div className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <Checkbox 
+                    id="isCompany" 
+                    name="isCompany" 
+                    checked={isCompany}
+                    onCheckedChange={(checked) => setIsCompany(!!checked)}
+                />
+                <div className="grid gap-0.5 leading-none">
+                    <Label htmlFor="isCompany" className="cursor-pointer font-semibold text-slate-700">
+                        ¿Es Empresa / Persona Jurídica?
+                    </Label>
+                    <p className="text-xs text-slate-500">
+                        Activa esto si necesitas registrar Razón Social en lugar de Nombre/Apellido.
+                    </p>
+                </div>
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-slate-500 uppercase tracking-tighter">Apellido</Label>
-              <Input name="lastName" required placeholder="Ej: Pérez" />
+
+            <div className="grid grid-cols-2 gap-4">
+                {/* Si es empresa, ocupa todo el ancho. Si es persona, comparte con Apellido */}
+                <div className={isCompany ? "col-span-2 space-y-2" : "space-y-2"}>
+                    <Label className="text-xs font-bold uppercase text-slate-500">
+                      {isCompany ? "Razón Social" : "Nombre"}
+                    </Label>
+                    <Input 
+                        name="firstName" 
+                        placeholder={isCompany ? "Ej: Transportes del Sur SpA" : "Ej: Juan"} 
+                        required 
+                        disabled={isLoading}
+                    />
+                </div>
+                
+                {!isCompany && (
+                    <div className="space-y-2">
+                        <Label className="text-xs font-bold uppercase text-slate-500">Apellido</Label>
+                        <Input 
+                          name="lastName" 
+                          placeholder="Ej: Pérez" 
+                          disabled={isLoading}
+                          required
+                        />
+                    </div>
+                )}
             </div>
-          </div>
 
-          {/* IDENTIFICACIÓN TRIBUTARIA Y TELÉFONO */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label className="text-xs font-bold text-slate-500 uppercase tracking-tighter">RUT / Tax ID</Label>
-              <Input name="taxId" placeholder="12.345.678-9" />
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label className="text-xs font-bold uppercase text-slate-500">RUT / Tax ID</Label>
+                    <Input 
+                      name="taxId" 
+                      placeholder="12.345.678-9" 
+                      disabled={isLoading}
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label className="text-xs font-bold uppercase text-slate-500">Teléfono</Label>
+                    <Input 
+                      name="phone" 
+                      placeholder="+56 9 1234 5678" 
+                      required 
+                      disabled={isLoading}
+                    />
+                </div>
             </div>
+
             <div className="space-y-2">
-              <Label className="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1">
-                <Phone className="h-3 w-3" /> Teléfono
-              </Label>
-              <Input name="phone" required placeholder="+56 9..." />
+                <Label className="text-xs font-bold uppercase text-slate-500">Email (Opcional)</Label>
+                <Input 
+                  name="email" 
+                  type="email" 
+                  placeholder="cliente@email.com" 
+                  disabled={isLoading}
+                />
             </div>
-          </div>
 
-          {/* EMAIL */}
-          <div className="space-y-2">
-            <Label className="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1">
-              <Mail className="h-3 w-3" /> Email
-            </Label>
-            <Input name="email" type="email" placeholder="cliente@correo.com" />
-          </div>
+            <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase text-slate-500">Dirección (Opcional)</Label>
+                <Input 
+                  name="address" 
+                  placeholder="Av. Siempre Viva 123" 
+                  disabled={isLoading}
+                />
+            </div>
 
-          {/* DIRECCIÓN */}
-          <div className="space-y-2">
-            <Label className="text-xs font-bold text-slate-500 uppercase tracking-tighter flex items-center gap-1">
-              <MapPin className="h-3 w-3" /> Dirección
-            </Label>
-            <Input name="address" placeholder="Av. Principal #123, Ciudad" />
-          </div>
-
-          <div className="pt-4">
-            <Button 
-              type="submit" 
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-11 shadow-lg transition-colors"
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...
-                </>
-              ) : (
-                "Registrar Cliente"
-              )}
-            </Button>
-          </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setOpen(false)}
+                disabled={isLoading}
+              >
+                Cancelar
+              </Button>
+              <Button 
+                  type="submit" 
+                  className="h-11 bg-indigo-600 font-bold text-white shadow-sm hover:bg-indigo-700 min-w-[150px]"
+                  disabled={isLoading}
+              >
+                  {isLoading ? (
+                      <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Guardando...
+                      </>
+                  ) : (
+                      "Guardar Cliente"
+                  )}
+              </Button>
+            </div>
         </form>
       </DialogContent>
     </Dialog>

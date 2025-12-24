@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Loader2, PlusCircle } from "lucide-react";
-import { createTenant } from "@/actions/create-tenant"; // Tu Server Action blindada
+// ✅ CORRECCIÓN: Importamos la acción desde el archivo centralizado
+import { registerTenant } from "@/actions/auth"; 
 
 export function CreateTenantForm() {
   const [isLoading, setIsLoading] = useState(false);
@@ -18,12 +19,17 @@ export function CreateTenantForm() {
     const formData = new FormData(event.currentTarget);
 
     try {
-      // Llamamos a la Server Action. 
-      // Si funciona, ella misma hace el redirect en el servidor.
-      await createTenant(formData);
+      // ✅ CORRECCIÓN: Usamos la nueva acción registerTenant
+      const result = await registerTenant(formData);
+      
+      if (result?.error) {
+        toast.error(result.error);
+        setIsLoading(false);
+      }
+      // Si tiene éxito, la acción misma hace el redirect, no necesitas hacer nada más aquí.
     } catch (error) {
       console.error(error);
-      toast.error("Ocurrió un error. Inténtalo de nuevo.");
+      toast.error("Ocurrió un error inesperado. Inténtalo de nuevo.");
       setIsLoading(false);
     }
   }
@@ -36,7 +42,7 @@ export function CreateTenantForm() {
             <Label htmlFor="name">Nombre de tu Taller</Label>
             <Input
               id="name"
-              name="name"
+              name="name" // Se mantiene igual para que el FormData lo capture
               placeholder="Ej: Nitro Garage"
               type="text"
               autoCapitalize="none"
