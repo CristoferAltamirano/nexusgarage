@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { notFound } from "next/navigation";
 import { OrderItems } from "@/components/orders/OrderItems"; 
-import { StatusSelector } from "@/components/orders/StatusSelector"; // <--- AQUÍ ESTÁ
+import { StatusSelector } from "@/components/orders/StatusSelector"; 
 import { Button } from "@/components/ui/button";
 import { Calendar, Car, User, Printer, ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -13,11 +13,29 @@ interface Props {
 }
 
 export default async function OrderDetailsPage(props: Props) {
+  // 1. Desempaquetamos los params (Next.js 15 requiere await)
   const params = await props.params;
   const { slug, orderId } = params;
   
-  const order = await db.workOrder.findUnique({
-    where: { id: orderId },
+  // 2. SEGURIDAD Y DATOS DEL TALLER
+  // Obtenemos ID y también el taxRate (impuesto) para los cálculos
+  const tenant = await db.tenant.findUnique({
+    where: { slug },
+    select: { 
+        id: true, 
+        name: true,
+        taxRate: true // <--- ✅ IMPORTANTE: Traemos el % de IVA configurado
+    }
+  });
+
+  if (!tenant) return notFound();
+
+  // 3. Buscamos la orden filtrando por tenantId (Seguridad)
+  const order = await db.workOrder.findFirst({
+    where: { 
+        id: orderId,
+        tenantId: tenant.id // <--- CANDADO DE SEGURIDAD
+    },
     include: {
       vehicle: { include: { customer: true } },
       items: { orderBy: { description: 'asc' } }
@@ -26,9 +44,10 @@ export default async function OrderDetailsPage(props: Props) {
 
   if (!order) return notFound();
 
+  // 4. Inventario del taller actual
   const inventory = await db.serviceProduct.findMany({
     where: { 
-        tenantId: order.tenantId,
+        tenantId: tenant.id, 
         deletedAt: null 
     },
     orderBy: { name: 'asc' }
@@ -52,7 +71,6 @@ export default async function OrderDetailsPage(props: Props) {
                     <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900">
                         Orden #{order.number}
                     </h2>
-                    {/* El estado en texto solo visible en móvil si quieres, o dejamos solo el selector */}
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-3 text-slate-500 text-sm">
@@ -72,7 +90,7 @@ export default async function OrderDetailsPage(props: Props) {
         {/* ACCIONES: SELECTOR Y BOTONES */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-2 lg:mt-0">
             
-            {/* AQUÍ ESTÁ EL SELECTOR DE ESTADO */}
+            {/* SELECTOR DE ESTADO */}
             <div className="w-full sm:w-auto">
                 <StatusSelector orderId={order.id} currentStatus={order.status} />
             </div>
@@ -152,6 +170,8 @@ export default async function OrderDetailsPage(props: Props) {
                 orderId={order.id} 
                 initialItems={order.items}
                 products={inventory}
+                slug={slug}
+                taxRate={tenant.taxRate || 0} // <--- ✅ AQUI PASAMOS EL IMPUESTO AL COMPONENTE
             />
         </div>
       </div>

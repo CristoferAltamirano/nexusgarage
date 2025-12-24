@@ -21,16 +21,20 @@ model Tenant {
   email     String?
   website   String?
   logoUrl   String?
+  
+  // ✅ NUEVO CAMPO: Tasa de impuesto (IVA) configurable per taller. 
+  // Por defecto 19% (Chile). Si es Zona Franca, se puede cambiar a 0.
+  taxRate   Int      @default(19)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
     
-  users      User[]
-  customers  Customer[]
-  vehicles   Vehicle[]
+  users     User[]
+  customers Customer[]
+  vehicles  Vehicle[]
   workOrders WorkOrder[]
-  products   ServiceProduct[]
-  auditLogs  AuditLog[] 
+  products  ServiceProduct[]
+  auditLogs AuditLog[] 
 }
 
 // 2. USUARIOS
@@ -68,26 +72,26 @@ model Customer {
   updatedAt DateTime @updatedAt
   deletedAt DateTime? // ♻️ Papelera
 
-  @@index([tenantId])             
-  @@index([tenantId, taxId])      
+  @@index([tenantId])              
+  @@index([tenantId, taxId])       
   @@index([tenantId, lastName])
   @@index([deletedAt]) // Para filtrar rápido los borrados
 }
 
 // 4. INVENTARIO (Con Soft Delete)
 model ServiceProduct {
-  id          String   @id @default(uuid())
-  name        String
-  code        String?
-  category    String
-  netPrice    Float
-  stock       Int      @default(0)
-  minStock    Int      @default(5) 
+  id        String   @id @default(uuid())
+  name      String
+  code      String?
+  category  String
+  netPrice  Float
+  stock     Int      @default(0)
+  minStock  Int      @default(5) 
     
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
 
-  orderItems  OrderItem[]
+  orderItems OrderItem[]
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -134,9 +138,9 @@ model WorkOrder {
   description String
   status      Status   @default(PENDING)
     
-  kilometer       Int?      
-  fuelLevel       Int?      
-  receptionNotes  Json?     
+  kilometer        Int?      
+  fuelLevel        Int?      
+  receptionNotes   Json?      
     
   dteType       String?
   dteNumber     Int?      
@@ -148,20 +152,20 @@ model WorkOrder {
   estimatedDate  DateTime?
   endDate        DateTime?
 
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
     
-  vehicleId     String
-  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id])
+  vehicleId      String
+  vehicle        Vehicle  @relation(fields: [vehicleId], references: [id])
 
-  mechanicId    String?  
-  mechanic      User?    @relation(fields: [mechanicId], references: [id])
+  mechanicId     String?  
+  mechanic       User?    @relation(fields: [mechanicId], references: [id])
 
-  items         OrderItem[] 
+  items          OrderItem[] 
 
-  createdAt     DateTime @default(now()) 
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime? // ♻️ Papelera
+  createdAt      DateTime @default(now()) 
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime? // ♻️ Papelera
 
   @@index([tenantId])
   @@index([tenantId, status]) 

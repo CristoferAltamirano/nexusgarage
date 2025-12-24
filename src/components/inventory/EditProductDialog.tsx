@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { updateProduct } from "@/actions/update-product";
+import { updateProduct } from "@/actions/inventory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,8 +24,17 @@ import { Package, Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
+interface Product {
+  id: string;
+  name: string;
+  category: string;
+  netPrice: number;
+  stock: number;
+  code?: string | null;
+}
+
 interface Props {
-  product: any;
+  product: Product;
   tenantId: string;
   slug: string;
 }
@@ -35,7 +44,6 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   
-  // Estado para el Select controlado
   const [category, setCategory] = useState(product.category || "Repuesto");
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -46,17 +54,21 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
     formData.append("id", product.id);
     formData.append("tenantId", tenantId);
     formData.append("slug", slug);
-    // Añadimos manualmente la categoría del select
     formData.append("category", category);
 
     try {
-      await updateProduct(formData);
-      toast.success("Ítem actualizado");
-      setOpen(false); // Cerramos el modal
-      router.refresh(); // Actualizamos la tabla sin recargar página
+      const res = await updateProduct(formData);
+
+      if (res.success) {
+        toast.success("Ítem actualizado correctamente");
+        setOpen(false);
+        router.refresh();
+      } else {
+        toast.error(res.error || "No se pudo actualizar");
+      }
     } catch (error) {
       console.error(error);
-      toast.error("Error al actualizar");
+      toast.error("Error de conexión");
     } finally {
       setIsLoading(false);
     }
@@ -64,7 +76,6 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {/* EL GATILLO: El botón del lápiz */}
       <DialogTrigger asChild>
         <Badge
           variant="outline"
@@ -74,15 +85,15 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
         </Badge>
       </DialogTrigger>
 
-      {/* EL MODAL: Estilo idéntico al de crear */}
-      <DialogContent className="sm:max-w-[500px]">
+      {/* Ajuste para móviles: max-h-screen y overflow para scroll si es necesario */}
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar Ítem</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-4 mt-2">
           
-          {/* Nombre con Icono */}
+          {/* Nombre */}
           <div className="space-y-2">
             <Label>Nombre del Ítem</Label>
             <div className="relative">
@@ -97,8 +108,11 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
             </div>
           </div>
 
-          {/* Grid de 2 columnas: Categoría y Código */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* 🛠️ CORRECCIÓN VISUAL:
+             grid-cols-1 (1 columna en móvil) 
+             sm:grid-cols-2 (2 columnas en PC/Tablet)
+          */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Categoría</Label>
               <Select value={category} onValueChange={setCategory}>
@@ -109,6 +123,7 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
                   <SelectItem value="Repuesto">📦 Repuesto</SelectItem>
                   <SelectItem value="Mano de Obra">🔧 Mano de Obra</SelectItem>
                   <SelectItem value="Insumo">🛢️ Insumo</SelectItem>
+                  <SelectItem value="Servicio Externo">🔌 Servicio Externo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -117,18 +132,18 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
               <Label>Código / SKU (Opcional)</Label>
               <Input
                 name="code"
-                defaultValue={product.code}
+                defaultValue={product.code || ""}
                 placeholder="FIL-001"
               />
             </div>
           </div>
 
-          {/* Grid de 2 columnas: Precio y Stock */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Precio y Stock: Misma corrección responsive */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Precio Neto</Label>
               <Input
-                name="price"
+                name="netPrice"
                 type="number"
                 defaultValue={product.netPrice}
                 required
@@ -137,7 +152,6 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
               />
             </div>
 
-            {/* Ocultamos stock si es mano de obra */}
             {category !== "Mano de Obra" && (
               <div className="space-y-2">
                 <Label>Stock Actual</Label>
@@ -152,7 +166,6 @@ export function EditProductDialog({ product, tenantId, slug }: Props) {
             )}
           </div>
 
-          {/* Botón de acción principal */}
           <div className="pt-4">
             <Button
               type="submit"

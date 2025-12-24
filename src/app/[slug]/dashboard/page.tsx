@@ -13,7 +13,8 @@ import {
   TrendingUp,
   Package,
   FileText,
-  Printer
+  Printer,
+  BarChart3
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -35,8 +36,7 @@ export default async function DashboardPage(props: Props) {
 
   if (!tenant) return <div>Taller no encontrado</div>;
 
-  // ================= LOGICA DE DATOS =================
-
+  // ================= 1. PREPARACIÓN DE FECHAS =================
   const today = new Date();
   const daysToQuery = Array.from({ length: 7 }, (_, i) => {
       const date = subDays(today, 6 - i);
@@ -50,64 +50,51 @@ export default async function DashboardPage(props: Props) {
 
   const revenueStatuses = [Status.COMPLETED, Status.DELIVERED];
 
-  // 🚀 EJECUCIÓN PARALELA
-  const results = await Promise.all([
-      // A) Gráfico
-      ...daysToQuery.map(day => 
-          db.workOrder.aggregate({
-              where: {
-                  tenantId: tenant.id,
-                  status: { in: revenueStatuses }, 
-                  deletedAt: null,
-                  endDate: { gte: day.start, lte: day.end } 
-              },
-              _sum: { totalAmount: true }
-          })
-      ),
-      // B) Vehículos
+  // ================= 2. CONSULTAS A LA BD (PARALELAS Y ORGANIZADAS) =================
+  
+  // A. Promesa para datos del gráfico (7 días)
+  const chartPromise = Promise.all(
+    daysToQuery.map(day => 
+      db.workOrder.aggregate({
+          where: {
+              tenantId: tenant.id,
+              status: { in: revenueStatuses }, 
+              deletedAt: null,
+              endDate: { gte: day.start, lte: day.end } 
+          },
+          _sum: { totalAmount: true }
+      })
+    )
+  );
+
+  // B. Promesa para datos generales (Vehículos, Órdenes, Contadores)
+  const generalDataPromise = Promise.all([
+      // 0. Vehículos recientes
       db.vehicle.findMany({
           where: { tenantId: tenant.id, deletedAt: null },
           select: {
-              id: true,
-              plateOrSerial: true,
-              brand: true,
-              model: true,
-              customer: {
-                  select: {
-                      firstName: true,
-                      lastName: true
-                  }
-              }
+              id: true, plateOrSerial: true, brand: true, model: true,
+              customer: { select: { firstName: true, lastName: true } }
           },
           orderBy: { createdAt: 'desc' },
           take: 10 
       }),
-      // C) Órdenes Recientes
+      // 1. Órdenes Recientes
       db.workOrder.findMany({
           where: { tenantId: tenant.id, deletedAt: null },
           select: {
-              id: true,
-              number: true,
-              status: true,
-              startDate: true,
-              totalAmount: true,
+              id: true, number: true, status: true, startDate: true, totalAmount: true,
               vehicle: {
                   select: {
-                      brand: true,
-                      model: true,
-                      customer: {
-                          select: {
-                              firstName: true,
-                              lastName: true
-                          }
-                      }
+                      brand: true, model: true,
+                      customer: { select: { firstName: true, lastName: true } }
                   }
               }
           },
           orderBy: { createdAt: "desc" },
           take: 5,
       }),
-      // D) Activas
+      // 2. Conteo Activas
       db.workOrder.count({
           where: { 
             tenantId: tenant.id, 
@@ -115,11 +102,9 @@ export default async function DashboardPage(props: Props) {
             deletedAt: null 
           }
       }),
-      // E) Clientes
-      db.customer.count({
-          where: { tenantId: tenant.id, deletedAt: null }
-      }),
-      // F) Ingresos Totales
+      // 3. Conteo Clientes
+      db.customer.count({ where: { tenantId: tenant.id, deletedAt: null } }),
+      // 4. Ingresos Totales Históricos
       db.workOrder.aggregate({
           where: { 
             tenantId: tenant.id, 
@@ -130,48 +115,23 @@ export default async function DashboardPage(props: Props) {
       })
   ]);
 
-  // ================= PROCESAMIENTO =================
-  const chartResults = results.slice(0, 7) as Array<{ _sum: { totalAmount: number | null } }>;
+  // Ejecutamos ambas promesas grandes en paralelo
+  const [chartRawData, [vehicles, recentOrders, activeOrdersCount, customersCount, totalRevenue]] = await Promise.all([
+    chartPromise,
+    generalDataPromise
+  ]);
 
-  // Use inferred types for safety
-  const vehicles = results[7] as {
-      id: string;
-      plateOrSerial: string;
-      brand: string;
-      model: string;
-      customer: {
-          firstName: string;
-          lastName: string;
-      };
-  }[];
+  // ================= 3. PROCESAMIENTO DE DATOS =================
 
-  const recentOrders = results[8] as {
-      id: string;
-      number: number;
-      status: Status;
-      startDate: Date;
-      totalAmount: number;
-      vehicle: {
-          brand: string;
-          model: string;
-          customer: {
-              firstName: string;
-              lastName: string;
-          };
-      };
-  }[];
-
-  const activeOrdersCount = results[9] as number;
-  const customersCount = results[10] as number;
-  const revenue = results[11] as { _sum: { totalAmount: number | null } };
-
-  const last7DaysData = chartResults.map((res, index) => ({
+  const last7DaysData = chartRawData.map((res, index) => ({
       name: daysToQuery[index].label,
       total: res._sum.totalAmount || 0
   }));
 
+  const totalRevenueAmount = totalRevenue._sum.totalAmount || 0;
+
+  // ================= 4. RENDERIZADO =================
   return (
-    // CAMBIO CLAVE AQUÍ: Eliminé 'bg-slate-50' para que sea transparente
     <div className="flex-1 space-y-8 p-4 md:p-8 pt-6 pb-20 min-h-full">
 
       {/* ENCABEZADO */}
@@ -245,7 +205,7 @@ export default async function DashboardPage(props: Props) {
                 </div>
             </div>
             <div className="text-2xl font-black text-slate-900 mt-2">
-                ${(revenue._sum.totalAmount || 0).toLocaleString("es-CL")}
+                ${totalRevenueAmount.toLocaleString("es-CL")}
             </div>
             <p className="text-xs text-emerald-600 flex items-center mt-1 font-bold">
                 <TrendingUp className="h-3 w-3 mr-1" /> Total facturado
@@ -295,8 +255,21 @@ export default async function DashboardPage(props: Props) {
       {/* SECCIÓN PRINCIPAL */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
 
-        {/* GRÁFICO */}
-        <RevenueChart data={last7DaysData} />
+        {/* 🛑 AQUÍ ESTÁ EL ARREGLO DEL GRÁFICO */}
+        <div className="xl:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden">
+             <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+                 <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5 text-indigo-600" />
+                    Ingresos Últimos 7 Días
+                 </h3>
+             </div>
+             <div className="p-6">
+                 {/* El contenedor con altura definida es clave para evitar el error 'width -1' */}
+                 <div className="w-full h-[350px]">
+                    <RevenueChart data={last7DaysData} />
+                 </div>
+             </div>
+        </div>
 
         {/* TABLA DE ÓRDENES RECIENTES */}
         <div className="xl:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden">
@@ -348,9 +321,9 @@ export default async function DashboardPage(props: Props) {
                                         order.status === 'CANCELLED' ? 'bg-red-50 text-red-700 border border-red-100' :
                                         'bg-orange-50 text-orange-700 border border-orange-100'
                                     }`}>
-                                        {order.status === 'DELIVERED' ? 'Entregado' : 
-                                         order.status === 'COMPLETED' ? 'Terminado' : 
-                                         order.status === 'CANCELLED' ? 'Cancelado' : 'Pendiente'}
+                                            {order.status === 'DELIVERED' ? 'Entregado' : 
+                                             order.status === 'COMPLETED' ? 'Terminado' : 
+                                             order.status === 'CANCELLED' ? 'Cancelado' : 'Pendiente'}
                                     </span>
                                 </td>
                                 <td className="p-6 align-middle hidden md:table-cell">

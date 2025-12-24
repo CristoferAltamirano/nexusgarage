@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation"; // 🔥 Para refrescar la lista sin recargar
-import { createCustomer } from "@/actions/create-customer";
+import { useRouter } from "next/navigation";
+import { saveCustomer } from "@/actions/customers"; // Asegúrate de que esta ruta sea correcta
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { UserPlus, Loader2 } from "lucide-react";
+import { UserPlus, Loader2, Building2, User } from "lucide-react";
 import { toast } from "sonner"; 
 
 interface Props {
@@ -25,34 +25,46 @@ interface Props {
 export function CreateCustomerDialog({ tenantId, slug }: Props) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  // Estado para controlar si es empresa y cambiar los labels del formulario
+  const [isCompany, setIsCompany] = useState(false);
+  
   const router = useRouter(); 
 
-  // Usamos onSubmit estándar para tener control total del Loader y el cierre
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); // 1. Evita recarga del navegador
-    setIsLoading(true); // 2. Activa el spinner
+    e.preventDefault();
+    setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
+    // Aseguramos que los datos de contexto viajen
+    formData.append("tenantId", tenantId);
+    formData.append("slug", slug);
+    
+    // Forzamos el valor del checkbox si estamos usando estado controlado
+    if (isCompany) {
+        formData.set("isCompany", "on");
+    }
 
     try {
-        // 3. Llamamos al Server Action
-        await createCustomer(formData);
+        const res = await saveCustomer(formData);
 
-        // 4. ✅ ÉXITO
-        toast.success("Cliente guardado exitosamente");
-        
-        // 5. Refrescamos la data de la página de atrás (la tabla de clientes)
-        router.refresh(); 
+        if (res.success) {
+            toast.success("Cliente guardado exitosamente");
+            
+            // 1. Refrescamos la data de la página de atrás (CRÍTICO)
+            router.refresh(); 
 
-        // 6. Cerramos el modal suavemente
-        setOpen(false);
+            // 2. Cerramos el modal y limpiamos
+            setOpen(false);
+            (e.target as HTMLFormElement).reset();
+            setIsCompany(false); // Reseteamos el switch de empresa
+        } else {
+            toast.error(res.error || "Error al guardar el cliente");
+        }
 
     } catch (error) {
-        // ❌ ERROR
         console.error(error);
-        toast.error("Ocurrió un error al guardar");
+        toast.error("Ocurrió un error inesperado de conexión");
     } finally {
-        // 7. Apagamos el spinner pase lo que pase
         setIsLoading(false);
     }
   }
@@ -60,68 +72,82 @@ export function CreateCustomerDialog({ tenantId, slug }: Props) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white">
+        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm font-medium">
           <UserPlus className="mr-2 h-4 w-4" /> Nuevo Cliente
         </Button>
       </DialogTrigger>
       
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Registrar Nuevo Cliente</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+             {isCompany ? <Building2 className="h-5 w-5 text-indigo-600"/> : <User className="h-5 w-5 text-indigo-600"/>}
+             Registrar Nuevo Cliente
+          </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="space-y-4 mt-2">
-            {/* Campos ocultos necesarios para la Server Action */}
-            <input type="hidden" name="tenantId" value={tenantId} />
-            <input type="hidden" name="slug" value={slug} />
-
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label>Nombre</Label>
-                    <Input name="firstName" placeholder="Juan" required />
-                </div>
-                <div className="space-y-2">
-                    <Label>Apellido</Label>
-                    <Input name="lastName" placeholder="Pérez" required />
+        <form onSubmit={onSubmit} className="space-y-5 mt-2">
+            
+            {/* SWITCH TIPO DE CLIENTE */}
+            <div className="flex items-center space-x-2 border p-3 rounded-lg bg-slate-50 border-slate-200">
+                <Checkbox 
+                    id="isCompany" 
+                    name="isCompany" 
+                    checked={isCompany}
+                    onCheckedChange={(checked) => setIsCompany(!!checked)}
+                />
+                <div className="grid gap-0.5 leading-none">
+                    <Label htmlFor="isCompany" className="font-semibold cursor-pointer text-slate-700">
+                        ¿Es Empresa / Persona Jurídica?
+                    </Label>
+                    <p className="text-xs text-slate-500">
+                        Activa esto si necesitas registrar Razón Social en lugar de Nombre/Apellido.
+                    </p>
                 </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+                {/* Si es empresa, ocupa todo el ancho. Si es persona, comparte con Apellido */}
+                <div className={isCompany ? "col-span-2 space-y-2" : "space-y-2"}>
+                    <Label>{isCompany ? "Razón Social" : "Nombre"}</Label>
+                    <Input 
+                        name="firstName" 
+                        placeholder={isCompany ? "Ej: Transportes del Sur SpA" : "Ej: Juan"} 
+                        required 
+                    />
+                </div>
+                
+                {!isCompany && (
+                    <div className="space-y-2">
+                        <Label>Apellido</Label>
+                        <Input name="lastName" placeholder="Ej: Pérez" />
+                    </div>
+                )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                    <Label>RUT / DNI</Label>
-                    <Input name="taxId" placeholder="12.345.678-9" required />
+                    <Label>RUT / Tax ID</Label>
+                    <Input name="taxId" placeholder="12.345.678-9" />
                 </div>
                 <div className="space-y-2">
                     <Label>Teléfono</Label>
-                    <Input name="phone" placeholder="+56 9..." required />
+                    <Input name="phone" placeholder="+56 9 1234 5678" required />
                 </div>
             </div>
 
             <div className="space-y-2">
                 <Label>Email (Opcional)</Label>
-                <Input name="email" type="email" placeholder="juan@gmail.com" />
+                <Input name="email" type="email" placeholder="cliente@email.com" />
             </div>
 
             <div className="space-y-2">
                 <Label>Dirección (Opcional)</Label>
                 <Input name="address" placeholder="Av. Siempre Viva 123" />
             </div>
-            
-            <div className="flex items-center space-x-2 pt-2 border p-3 rounded-md bg-slate-50">
-                <Checkbox id="isCompany" name="isCompany" />
-                <div className="grid gap-1.5 leading-none">
-                    <Label htmlFor="isCompany" className="font-medium cursor-pointer">
-                        Es una Empresa
-                    </Label>
-                    <p className="text-sm text-muted-foreground">
-                        Marca esto si requiere factura a nombre de razón social.
-                    </p>
-                </div>
-            </div>
 
             <Button 
                 type="submit" 
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white mt-4"
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white mt-4 font-bold h-11"
                 disabled={isLoading}
             >
                 {isLoading ? (

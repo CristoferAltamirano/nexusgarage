@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { deleteProduct } from "@/actions/delete-product"; // Asegúrate que la ruta coincida con el archivo que creaste
+import { useRouter } from "next/navigation";
+// ✅ CORRECCIÓN: Importamos desde el archivo maestro consolidado
+import { deleteProduct } from "@/actions/inventory"; 
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -19,22 +21,31 @@ import {
 
 interface Props {
   id: string;
-  tenantId: string; // 🔒 Dato clave para borrar en el taller correcto
-  slug: string;
+  // Mantenemos estas props por compatibilidad con el componente padre,
+  // aunque la Server Action moderna ya infiere el tenantId por seguridad.
+  tenantId?: string; 
+  slug?: string;
 }
 
-export function DeleteProductButton({ id, tenantId, slug }: Props) {
+export function DeleteProductButton({ id }: Props) {
   const [isDeleting, setIsDeleting] = useState(false);
+  const router = useRouter(); // Hook para refrescar la página sin recargar
 
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      // Pasamos el tenantId para asegurar que borramos en el taller actual
-      await deleteProduct(id, tenantId, slug);
-      toast.success("Ítem eliminado correctamente");
+      // ✅ Solo enviamos el ID. La lógica de seguridad está en el servidor.
+      const res = await deleteProduct(id);
+
+      if (res.success) {
+        toast.success("Ítem eliminado correctamente");
+        router.refresh(); // Actualiza la tabla visualmente
+      } else {
+        toast.error(res.error || "No se pudo eliminar el ítem");
+      }
     } catch (error) {
       console.error(error);
-      toast.error("No se pudo eliminar el ítem");
+      toast.error("Error inesperado de conexión");
     } finally {
       setIsDeleting(false);
     }
@@ -43,7 +54,12 @@ export function DeleteProductButton({ id, tenantId, slug }: Props) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+          disabled={isDeleting}
+        >
           {isDeleting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
@@ -59,7 +75,8 @@ export function DeleteProductButton({ id, tenantId, slug }: Props) {
             <AlertDialogTitle>¿Eliminar este ítem?</AlertDialogTitle>
           </div>
           <AlertDialogDescription>
-            Esta acción no se puede deshacer inmediatamente. El ítem dejará de estar disponible para nuevas órdenes.
+            Esta acción enviará el producto a la papelera. 
+            El ítem dejará de estar disponible para nuevas órdenes inmediatamente.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -69,10 +86,16 @@ export function DeleteProductButton({ id, tenantId, slug }: Props) {
               e.preventDefault(); 
               handleDelete();
             }}
-            className="bg-red-600 hover:bg-red-700 text-white"
+            className="bg-red-600 hover:bg-red-700 text-white font-bold"
             disabled={isDeleting}
           >
-            {isDeleting ? "Eliminando..." : "Sí, Eliminar"}
+            {isDeleting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Eliminando...
+              </>
+            ) : (
+              "Sí, Eliminar"
+            )}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

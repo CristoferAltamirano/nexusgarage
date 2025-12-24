@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { 
     Sheet, 
     SheetContent, 
@@ -33,6 +34,20 @@ const routes = [
 
 export const MobileSidebar = ({ slug }: { slug: string }) => {
     const pathname = usePathname();
+    
+    // 🛠️ SOLUCIÓN AL ERROR DE HIDRATACIÓN:
+    // Creamos un estado para saber si ya estamos en el navegador
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    // Si no estamos montados (es decir, estamos en el servidor), no renderizamos nada.
+    // Esto evita que los IDs aleatorios del servidor choquen con los del cliente.
+    if (!isMounted) {
+        return null; 
+    }
 
     return (
         <Sheet>
@@ -70,14 +85,11 @@ export const MobileSidebar = ({ slug }: { slug: string }) => {
                             {routes.map((route) => {
                                 const fullPath = `/${slug}${route.href}`;
                                 
-                                // --- CORRECCIÓN DE LA LÓGICA ---
                                 const isActive = 
                                     pathname === fullPath || 
                                     (
                                         pathname?.startsWith(fullPath) && 
                                         route.href !== "/dashboard" &&
-                                        // Aquí está el truco: Si la ruta es '/settings', 
-                                        // forzamos a que sea falso si estamos en '/settings/catalog'
                                         !(route.href === "/settings" && pathname?.includes("/settings/catalog"))
                                     );
 

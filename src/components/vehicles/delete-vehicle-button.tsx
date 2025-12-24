@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { deleteVehicle } from "@/actions/delete-vehicle";
+// ✅ Importación corregida: apunta al archivo maestro
+import { deleteVehicle } from "@/actions/vehicles";
 import { Button } from "@/components/ui/button";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -19,21 +20,27 @@ import {
 
 interface Props {
   id: string;
-  tenantId: string;
-  slug: string;
+  tenantId: string; // Se mantiene por compatibilidad con el componente padre
+  slug: string;     // Se mantiene por compatibilidad
 }
 
-export function DeleteVehicleButton({ id, tenantId, slug }: Props) {
+export function DeleteVehicleButton({ id }: Props) {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      await deleteVehicle(id, tenantId, slug);
-      toast.success("Vehículo eliminado correctamente");
+      // Solo necesitamos el ID, el tenant se valida de forma segura en el servidor
+      const res = await deleteVehicle(id);
+
+      if (res.success) {
+        toast.success("Vehículo eliminado correctamente");
+      } else {
+        toast.error(res.error || "Error al eliminar el vehículo");
+      }
     } catch (error) {
       console.error(error);
-      toast.error("Error al eliminar el vehículo");
+      toast.error("Ocurrió un error inesperado");
     } finally {
       setIsDeleting(false);
     }
@@ -42,7 +49,12 @@ export function DeleteVehicleButton({ id, tenantId, slug }: Props) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-600 hover:bg-red-50">
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+          disabled={isDeleting}
+        >
           {isDeleting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
@@ -58,22 +70,28 @@ export function DeleteVehicleButton({ id, tenantId, slug }: Props) {
             <AlertDialogTitle>¿Eliminar vehículo?</AlertDialogTitle>
           </div>
           <AlertDialogDescription>
-            Esta acción enviará el vehículo a la papelera. Podrás restaurarlo después si contactas a soporte.
+            Esta acción enviará el vehículo a la papelera de reciclaje. 
+            El historial de órdenes asociado se mantendrá, pero el vehículo dejará de aparecer en las listas activas.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
           <AlertDialogAction 
-            // 🔥 AQUÍ ESTÁ EL FIX DE TYPESCRIPT:
-            // Agregamos el tipo ": React.MouseEvent"
             onClick={(e: React.MouseEvent) => {
+              // Prevenimos el cierre automático para mostrar el spinner de carga
               e.preventDefault(); 
               handleDelete();
             }}
-            className="bg-red-600 hover:bg-red-700 text-white"
+            className="bg-red-600 hover:bg-red-700 text-white font-bold"
             disabled={isDeleting}
           >
-            {isDeleting ? "Eliminando..." : "Sí, Eliminar"}
+            {isDeleting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Eliminando...
+              </>
+            ) : (
+              "Sí, Eliminar"
+            )}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
