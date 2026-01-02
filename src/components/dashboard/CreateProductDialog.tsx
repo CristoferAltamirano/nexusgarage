@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useEffect } from "react"; // ✅ Agregamos useEffect
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// ✅ CORRECCIÓN: Ruta actualizada a la acción agrupada de inventario
 import { createProduct } from "@/actions/inventory"; 
 import { PackagePlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,8 +17,17 @@ interface Props {
 
 export function CreateProductDialog({ tenantId, slug }: Props) {
   const router = useRouter();
+  
+  // 1. ESTADO DE MONTAJE (La solución al error rojo)
+  const [isMounted, setIsMounted] = useState(false);
+  
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  // 2. EFECTO DE MONTAJE
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   async function handleSubmit(formData: FormData) {
     setIsLoading(true);
@@ -29,7 +37,7 @@ export function CreateProductDialog({ tenantId, slug }: Props) {
       if (result.success) {
         toast.success("Ítem agregado al inventario correctamente");
         setOpen(false);
-        router.refresh(); // Actualiza la lista de productos automáticamente
+        router.refresh(); 
       } else {
         toast.error(result.error || "Error al crear el producto");
       }
@@ -39,6 +47,16 @@ export function CreateProductDialog({ tenantId, slug }: Props) {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // 3. RENDERIZADO CONDICIONAL
+  // Si no está montado, retornamos solo el botón (sin el Dialog complejo) para evitar mismatch
+  if (!isMounted) {
+    return (
+        <Button className="bg-indigo-600 hover:bg-indigo-700 gap-2 font-bold uppercase text-xs">
+            <PackagePlus size={16} /> Nuevo Ítem
+        </Button>
+    );
   }
 
   return (

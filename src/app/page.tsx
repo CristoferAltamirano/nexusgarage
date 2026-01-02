@@ -12,7 +12,8 @@ import {
   Cog,      
   Gauge,    
   Hammer,
-  Building2    
+  Building2,
+  CheckCircle2    
 } from "lucide-react"; 
 
 // Acción de servidor
@@ -41,7 +42,6 @@ async function createTenantAction(formData: FormData) {
 export default async function LandingPage() {
   const user = await currentUser();
   
-  // CORRECCIÓN: Usamos findMany para traer TODOS los talleres, no solo uno
   let userTenants: any[] = [];
 
   if (user) {
@@ -50,15 +50,20 @@ export default async function LandingPage() {
         userId: user.id
       },
       orderBy: {
-        createdAt: 'desc' // Ordenamos por fecha de creación
+        createdAt: 'desc' 
       }
     });
   }
 
-  // Helper para saber si tiene al menos un taller
-  const hasTenants = userTenants.length > 0;
-  // Tomamos el primero para el botón del header (por defecto)
-  const primaryTenant = hasTenants ? userTenants[0] : null;
+  // 🧠 FILTRO ANTI-DUPLICADOS (Solución Senior)
+  // Eliminamos talleres repetidos basándonos en su ID único
+  const uniqueTenants = Array.from(
+    new Map(userTenants.map((item) => [item.id, item])).values()
+  );
+
+  const hasTenants = uniqueTenants.length > 0;
+  // Tomamos el primero para el botón del header (acceso rápido)
+  const primaryTenant = hasTenants ? uniqueTenants[0] : null;
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-950 text-slate-200 font-sans relative overflow-hidden">
@@ -90,7 +95,8 @@ export default async function LandingPage() {
 
         <nav>
           {primaryTenant ? (
-            <Link href={`/${primaryTenant.slug}/dashboard`}>
+            // ✅ FIX VISUAL: 'hidden md:flex' oculta este botón en móviles para que no tape el logo
+            <Link href={`/${primaryTenant.slug}/dashboard`} className="hidden md:flex">
                 <Button className="bg-slate-200 text-slate-900 hover:bg-white font-bold border-b-4 border-slate-400 active:border-b-0 active:translate-y-1 transition-all">
                   Ir a {primaryTenant.name} <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -124,7 +130,7 @@ export default async function LandingPage() {
           Controla <span className="text-white border-b-2 border-orange-500">autos</span>, <span className="text-white border-b-2 border-orange-500">repuestos</span> y <span className="text-white border-b-2 border-orange-500">dinero</span> sin complicaciones.
         </p>
 
-        <div className="w-full max-w-md space-y-4">
+        <div className="w-full max-w-md space-y-6">
           
           {!user ? (
              <Link href="/sign-up">
@@ -133,33 +139,42 @@ export default async function LandingPage() {
                 </Button>
              </Link>
           ) : hasTenants ? (
-             <div className="flex flex-col gap-4 p-6 bg-slate-900/50 rounded-xl border border-slate-700 backdrop-blur-sm">
-                <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2">Selecciona tu Taller</div>
-                
-                {/* LISTA DE TALLERES (Iteramos sobre userTenants) */}
-                {userTenants.map((tenant) => (
-                    <Link key={tenant.id} href={`/${tenant.slug}/dashboard`} className="w-full">
-                        <Button size="lg" className="w-full h-16 text-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl border-b-4 border-emerald-800 font-black uppercase active:border-b-0 active:translate-y-1 justify-between px-6">
-                            <span>{tenant.name}</span>
-                            <ArrowRight className="h-6 w-6 opacity-50" />
-                        </Button>
-                    </Link>
-                ))}
-
-                <div className="flex items-center justify-center gap-2 text-xs text-slate-500 font-mono bg-black/20 py-2 rounded mt-2">
-                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                    MECÁNICO EN LINEA: {user.firstName?.toUpperCase()}
+             <div className="flex flex-col gap-4 p-6 bg-slate-900/80 rounded-xl border border-slate-700 backdrop-blur-sm shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-700 pb-3 mb-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Selecciona tu Taller</span>
+                    <span className="text-xs text-orange-500 font-mono">{uniqueTenants.length} DISPONIBLES</span>
                 </div>
                 
-                {/* Botón opcional para crear OTRO taller si ya tiene uno */}
-                <div className="pt-4 border-t border-slate-800">
-                    <p className="text-xs text-slate-500 mb-2">¿Quieres registrar una nueva sucursal?</p>
-                     {/* Aquí podrías poner un botón que cambie un estado para mostrar el formulario, 
-                         pero por ahora lo mantenemos simple para no complicar el código */}
+                {/* ✅ LISTA DE TALLERES ÚNICOS (Mejorada Visualmente) */}
+                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                    {uniqueTenants.map((tenant) => (
+                        <Link key={tenant.id} href={`/${tenant.slug}/dashboard`} className="block group w-full">
+                            <div className="w-full p-4 bg-slate-800 hover:bg-slate-700 border-l-4 border-slate-600 hover:border-orange-500 rounded-r-lg transition-all flex items-center justify-between shadow-lg group-hover:translate-x-1">
+                                <div className="flex items-center gap-3 text-left">
+                                    <div className="h-8 w-8 rounded bg-slate-900 flex items-center justify-center text-slate-400 group-hover:text-orange-400 transition-colors">
+                                        <Building2 className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-white text-lg leading-none uppercase">{tenant.name}</h3>
+                                        <p className="text-[10px] text-slate-500 mt-1 font-mono">ID: {tenant.slug}</p>
+                                    </div>
+                                </div>
+                                <ArrowRight className="h-5 w-5 text-slate-500 group-hover:text-orange-500 transition-colors" />
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-slate-800 text-center">
+                    <div className="inline-flex items-center gap-2 text-xs text-emerald-400 bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-900">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Sesión activa: {user.firstName?.toUpperCase()}</span>
+                    </div>
                 </div>
              </div>
           ) : (
             <form action={createTenantAction} className="flex flex-col gap-5 bg-gradient-to-b from-slate-800 to-slate-900 p-8 rounded-xl border-t-4 border-t-slate-600 border-b-4 border-b-slate-950 shadow-2xl relative">
+                {/* Tornillos decorativos */}
                 <div className="absolute top-2 left-2 w-2 h-2 rounded-full bg-slate-500 shadow-inner"></div>
                 <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-slate-500 shadow-inner"></div>
                 <div className="absolute bottom-2 left-2 w-2 h-2 rounded-full bg-slate-500 shadow-inner"></div>

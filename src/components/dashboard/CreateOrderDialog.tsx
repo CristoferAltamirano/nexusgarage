@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Plus, Car, User, Search, Loader2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
-// Importación corregida al archivo consolidado
+// Importación de acción
 import { saveOrder } from "@/actions/orders";
 
 interface Props {
@@ -20,6 +20,9 @@ interface Props {
 }
 
 export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
+  // 1. ESTADO DE MONTAJE (Protección Hydration Error)
+  const [isMounted, setIsMounted] = useState(false);
+
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -34,6 +37,11 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
     brand: "",
     model: "",
   });
+
+  // 2. EFECTO DE MONTAJE
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Manejador de cambios genérico
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -65,7 +73,6 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
     setIsLoading(true);
 
     const data = new FormData(e.currentTarget);
-    // Añadimos datos de contexto
     data.append("tenantId", tenantId);
     data.append("slug", slug);
 
@@ -75,7 +82,6 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
       if (res.success) {
         toast.success("Orden de trabajo creada correctamente");
         setOpen(false);
-        // Resetear formulario
         setFormData({
           firstName: "", lastName: "", taxId: "", email: "",
           phone: "", plate: "", brand: "", model: ""
@@ -90,6 +96,16 @@ export function CreateOrderDialog({ tenantId, slug, vehicles = [] }: Props) {
       setIsLoading(false);
     }
   };
+
+  // 3. RENDERIZADO SEGURO
+  // Si no está montado, mostramos solo el botón para evitar mismatch
+  if (!isMounted) {
+    return (
+        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all">
+          <Plus className="mr-2 h-4 w-4" /> Nueva Orden
+        </Button>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
