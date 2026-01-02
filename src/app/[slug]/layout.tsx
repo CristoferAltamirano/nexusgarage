@@ -83,7 +83,7 @@ export default async function DashboardLayout({
                 <p className="text-sm font-bold text-slate-800 leading-none">
                     {user.firstName} {user.lastName}
                 </p>
-                <p className="text-[10px] font-bold text-orange-600 uppercase mt-1 tracking-wide bg-orange-50 px-2 py-0.5 rounded inline-block border border-orange-100">
+                <p className="text-xs font-bold text-orange-600 uppercase mt-1 tracking-wide bg-orange-50 px-2 py-0.5 rounded inline-block border border-orange-100">
                     {tenant.name}
                 </p>
              </div>
@@ -98,10 +98,12 @@ export default async function DashboardLayout({
         </main>
       </div>
 
-      {/* ✅ NEXUS BOT INTEGRADO (Siempre visible y por encima de todo) */}
+      {/* ✅ NEXUS BOT INTEGRADO (Con Configuración Regional) */}
       <NexusAssistant 
         slug={slug} 
-        userName={user.firstName || "Colega"} 
+        userName={user.firstName || "Colega"}
+        countryCode={tenant.country} // 🌍 País del taller
+        taxRate={tenant.taxRate}     // 💰 Impuesto configurado
       />
 
     </div>

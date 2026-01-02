@@ -12,10 +12,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// ✅ CORRECCIÓN: Ruta actualizada a la acción agrupada de clientes
+import { 
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue, 
+} from "@/components/ui/select";
 import { createCustomer } from "@/actions/customers"; 
-import { UserPlus, Loader2 } from "lucide-react";
+import { UserPlus, Loader2, Globe } from "lucide-react";
 import { toast } from "sonner";
+// Importamos nuestra configuración de países
+import { COUNTRIES, getCountryConfig, CountryCode } from "@/config/localization";
 
 interface Props {
   tenantId: string;
@@ -26,17 +34,25 @@ export default function CreateCustomerDialog({ tenantId, slug }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Estado para el país seleccionado (Por defecto Chile 'CL')
+  const [selectedCountry, setSelectedCountry] = useState<CountryCode>('CL');
+  
+  // Obtenemos la configuración dinámica según el país
+  const localization = getCountryConfig(selectedCountry);
 
   async function handleSubmit(formData: FormData) {
     setIsLoading(true);
     try {
-      // ✅ CORRECCIÓN: Llamamos a la acción desde el archivo centralizado
+      // Agregamos el país al formData antes de enviarlo
+      formData.append('country', selectedCountry);
+      
       const result = await createCustomer(formData);
       
       if (result.success) {
         toast.success("Cliente creado correctamente");
         setOpen(false);
-        router.refresh(); // Actualiza la lista de clientes automáticamente
+        router.refresh(); 
       } else {
         toast.error(result.error || "Error al crear el cliente");
       }
@@ -65,58 +81,76 @@ export default function CreateCustomerDialog({ tenantId, slug }: Props) {
         </DialogHeader>
 
         <form action={handleSubmit} className="grid gap-4 py-4">
-          {/* Campos ocultos de contexto */}
           <input type="hidden" name="tenantId" value={tenantId} />
           <input type="hidden" name="slug" value={slug} />
+
+          {/* 🌎 SELECCIÓN DE PAÍS */}
+          <div className="grid gap-2">
+            <Label className="font-bold text-slate-500 text-xs uppercase flex items-center gap-1">
+                <Globe className="h-3 w-3" /> País
+            </Label>
+            <Select 
+                value={selectedCountry} 
+                onValueChange={(val) => setSelectedCountry(val as CountryCode)}
+                disabled={isLoading}
+            >
+                <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un país" />
+                </SelectTrigger>
+                <SelectContent>
+                    {Object.entries(COUNTRIES).map(([code, config]) => (
+                        <SelectItem key={code} value={code}>
+                            {config.name} ({config.taxIdLabel})
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label className="font-bold text-slate-500 text-xs uppercase">Nombre *</Label>
-              <Input 
-                name="firstName" 
-                placeholder="Ej: Pedro" 
-                required 
-                disabled={isLoading}
-              />
+              <Input name="firstName" placeholder="Ej: Pedro" required disabled={isLoading} />
             </div>
             <div className="grid gap-2">
               <Label className="font-bold text-slate-500 text-xs uppercase">Apellido *</Label>
-              <Input 
-                name="lastName" 
-                placeholder="Ej: Pascal" 
-                required 
-                disabled={isLoading}
-              />
+              <Input name="lastName" placeholder="Ej: Pascal" required disabled={isLoading} />
             </div>
+          </div>
+
+          {/* 🆔 DOCUMENTO DE IDENTIDAD DINÁMICO */}
+          <div className="grid gap-2">
+            <Label className="font-bold text-slate-500 text-xs uppercase">
+                {localization.taxIdLabel} * <span className="ml-1 text-slate-400 font-normal normal-case">(Documento)</span>
+            </Label>
+            <Input 
+              name="rut" // Nota: En el backend probablemente lo recibas como 'rut', si no has cambiado el esquema
+              placeholder={`Ej: ${localization.taxIdPlaceholder}`} 
+              required 
+              disabled={isLoading} 
+            />
           </div>
 
           <div className="grid gap-2">
             <Label className="font-bold text-slate-500 text-xs uppercase">Teléfono / WhatsApp *</Label>
-            <Input 
-              name="phone" 
-              placeholder="Ej: +569 1234 5678" 
-              required 
-              disabled={isLoading}
-            />
+            <div className="flex gap-2">
+                {/* Prefijo telefónico automático */}
+                <div className="flex items-center justify-center bg-slate-100 border rounded px-3 text-sm text-slate-500 font-bold min-w-[3.5rem]">
+                    {localization.phoneCode}
+                </div>
+                <Input 
+                  name="phone" 
+                  placeholder="9 1234 5678" 
+                  required 
+                  disabled={isLoading} 
+                  className="flex-1"
+                />
+            </div>
           </div>
 
           <div className="grid gap-2">
             <Label className="font-bold text-slate-500 text-xs uppercase">Email (Opcional)</Label>
-            <Input 
-              name="email" 
-              type="email" 
-              placeholder="cliente@ejemplo.com" 
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label className="font-bold text-slate-500 text-xs uppercase">Dirección (Opcional)</Label>
-            <Input 
-              name="address" 
-              placeholder="Av. Principal #123" 
-              disabled={isLoading}
-            />
+            <Input name="email" type="email" placeholder="cliente@ejemplo.com" disabled={isLoading} />
           </div>
 
           <Button 

@@ -12,9 +12,10 @@ import { useRouter, usePathname } from "next/navigation";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner"; 
+import { getCountryConfig } from "@/config/localization"; 
 
 // ==========================================
-// 1. CONFIGURACIÓN Y ESTILOS (Design System)
+// 1. CONFIGURACIÓN Y ESTILOS
 // ==========================================
 
 const THEME = {
@@ -22,7 +23,7 @@ const THEME = {
   secondary: "bg-slate-900 text-white",
   accent: "text-orange-500",
   botBubble: "bg-white text-slate-700 border border-slate-100 rounded-tl-none shadow-sm",
-  userBubble: "bg-gradient-to-br from-orange-500 to-red-600 text-white rounded-tr-none shadow-md",
+  userBubble: "bg-linear-to-br from-orange-500 to-red-600 text-white rounded-tr-none shadow-md",
 };
 
 const STYLES = {
@@ -33,16 +34,16 @@ const STYLES = {
 };
 
 // ==========================================
-// 2. DEFINICIÓN DE TIPOS (Strict Typing)
+// 2. DEFINICIÓN DE TIPOS
 // ==========================================
 
 type BotMode = "chat" | "calculator" | "notes";
 
 interface Intent {
   id: string;
-  keywords: string[]; // Palabras clave para match difuso
-  exactPhrases?: string[]; // Frases para match exacto (prioridad alta)
-  responses: string[];
+  keywords: string[]; 
+  exactPhrases?: string[]; 
+  responses: string[]; 
   link?: string;
   buttonText?: string;
   icon?: React.ElementType;
@@ -61,13 +62,15 @@ interface Message {
 interface Props {
   slug: string;
   userName?: string;
+  countryCode?: string;
+  taxRate?: number; // Recibimos el IVA desde la BD
 }
 
 // ==========================================
-// 3. BASE DE CONOCIMIENTO (The Brain)
+// 3. BASE DE CONOCIMIENTO
 // ==========================================
 
-const KNOWLEDGE_BASE: Intent[] = [
+const RAW_KNOWLEDGE_BASE: Intent[] = [
   {
     id: "dashboard",
     keywords: ["inicio", "dashboard", "resumen", "casa", "home", "estadisticas", "numeros", "ventas", "volver", "principal", "metricas"],
@@ -122,7 +125,7 @@ const KNOWLEDGE_BASE: Intent[] = [
   },
   {
     id: "clients",
-    keywords: ["cliente", "dueño", "contacto", "crear cliente", "nuevo cliente", "rut", "persona", "usuarios", "propietario"],
+    keywords: ["cliente", "dueño", "contacto", "crear cliente", "nuevo cliente", "rut", "persona", "usuarios", "propietario", "dni", "cuit", "rfc", "nif"],
     responses: [
       "Tu cartera de clientes. 👥 Gestiona o crea nuevos contactos.",
       "Base de datos de personas. 📒 ¿Necesitas buscar a alguien?",
@@ -146,7 +149,7 @@ const KNOWLEDGE_BASE: Intent[] = [
   },
   {
     id: "settings",
-    keywords: ["configurar", "taller", "logo", "nombre", "iva", "datos", "empresa", "ajustes", "parametros"],
+    keywords: ["configurar", "taller", "logo", "nombre", "iva", "datos", "empresa", "ajustes", "parametros", "impuesto"],
     responses: [
       "Zona de administración. ⚙️ Configura los datos de tu empresa.",
       "Ajustes del sistema. 🔧 Edita la información de tu taller aquí.",
@@ -189,7 +192,6 @@ const KNOWLEDGE_BASE: Intent[] = [
 // 4. UTILITIES & ALGORITHMS
 // ==========================================
 
-// Algoritmo de Levenshtein (Distancia de edición)
 const levenshteinDistance = (a: string, b: string): number => {
   const matrix = [];
   for (let i = 0; i <= b.length; i++) matrix[i] = [i];
@@ -201,11 +203,8 @@ const levenshteinDistance = (a: string, b: string): number => {
         matrix[i][j] = matrix[i - 1][j - 1];
       } else {
         matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          Math.min(
-            matrix[i][j - 1] + 1,   // insertion
-            matrix[i - 1][j] + 1    // deletion
-          )
+          matrix[i - 1][j - 1] + 1,
+          Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
         );
       }
     }
@@ -213,7 +212,6 @@ const levenshteinDistance = (a: string, b: string): number => {
   return matrix[b.length][a.length];
 };
 
-// Calculadora de similitud normalizada (0 a 1)
 const calculateSimilarity = (s1: string, s2: string): number => {
   const longer = s1.length > s2.length ? s1 : s2;
   const shorter = s1.length > s2.length ? s2 : s1;
@@ -221,10 +219,8 @@ const calculateSimilarity = (s1: string, s2: string): number => {
   return (longer.length - levenshteinDistance(longer, shorter)) / longer.length;
 };
 
-// Generador de IDs únicos
 const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-// Helper para URLs seguras
 const getSafeUrl = (baseSlug: string, path?: string) => {
   if (!path || path === "/" || path === "") return `/${baseSlug}`; 
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
@@ -235,12 +231,15 @@ const getSafeUrl = (baseSlug: string, path?: string) => {
 // 5. COMPONENTE PRINCIPAL
 // ==========================================
 
-export function NexusAssistant({ slug, userName = "Colega" }: Props) {
+export function NexusAssistant({ slug, userName = "Colega", countryCode = "CL", taxRate = 19 }: Props) {
   // --- ESTADOS ---
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<BotMode>("chat");
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  
+  // Configuración Regional
+  const countryConfig = getCountryConfig(countryCode);
   
   // Herramientas
   const [calcAmount, setCalcAmount] = useState("");
@@ -255,7 +254,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // --- INICIALIZACIÓN ---
-  // ✅ FIX: useMemo devuelve el valor string, no una función para llamar después
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return "¡Buenos días";
@@ -267,7 +265,7 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
     { 
       id: "init", 
       role: "bot", 
-      text: `${greeting} ${userName}! 🍊\nSoy NexusBot v12.0.\n\nEstoy conectado a tu taller. ¿Qué necesitas gestionar hoy?`,
+      text: `${greeting} ${userName}! 🍊\nSoy NexusBot v12.1 (${countryConfig.name}).\n\nEstoy conectado a tu taller. ¿Qué necesitas gestionar hoy?`,
       timestamp: Date.now()
     }
   ]);
@@ -305,7 +303,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
     const lowerText = text.trim().toLowerCase();
     setIsTyping(true);
 
-    // Retraso aleatorio para "humanizar" (entre 400ms y 800ms)
     const thinkingTime = Math.floor(Math.random() * 400) + 400;
 
     setTimeout(() => {
@@ -344,36 +341,33 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
          };
       }
 
-      // RUT
-      const rutRegex = /(\d{1,3}(?:\.\d{1,3}){2}-[\dkK])|(\d{7,8}-[\dkK])/;
-      const potentialRut = lowerText.match(rutRegex);
-      if (!responseMsg && potentialRut) {
+      // IDENTIFICACIÓN FISCAL (Adaptado al país)
+      const taxIdRegex = /(\d{1,3}(?:\.\d{1,3}){2}-[\dkK])|(\d{7,11})|(\d{2}-\d{8}-\d{1})/;
+      const potentialTaxId = lowerText.match(taxIdRegex);
+      
+      if (!responseMsg && potentialTaxId) {
+         const taxLabel = countryConfig.taxIdLabel;
          responseMsg = {
             id: generateId(), role: "bot",
-            text: `👤 He detectado un RUT: **${potentialRut[0]}**. \n¿Buscamos a este cliente?`,
-            actionLink: getSafeUrl(slug, `/customers?query=${potentialRut[0]}`),
+            text: `👤 He detectado un ${taxLabel}: **${potentialTaxId[0]}**. \n¿Buscamos a este cliente?`,
+            actionLink: getSafeUrl(slug, `/customers?query=${potentialTaxId[0]}`),
             actionLabel: "Buscar Cliente",
             icon: Users,
             timestamp: Date.now()
          };
       }
 
-      // 2. MATCHING INTELIGENTE (Fuzzy + Exact)
+      // 2. MATCHING INTELIGENTE
       if (!responseMsg) {
-        KNOWLEDGE_BASE.forEach(intent => {
+        RAW_KNOWLEDGE_BASE.forEach(intent => {
             let score = 0;
-
-            // A. Frases exactas (Prioridad Alta)
             if (intent.exactPhrases?.some(phrase => lowerText.includes(phrase))) {
-                score = 1.0; // Match perfecto
+                score = 1.0; 
             } else {
-                // B. Palabras clave (Fuzzy Logic)
                 const words = lowerText.split(" ");
                 let wordMatches = 0;
-                
                 words.forEach(word => {
                     if (word.length < 3) return;
-
                     intent.keywords.forEach(keyword => {
                         const similarity = calculateSimilarity(word, keyword);
                         if (similarity > 0.8) { 
@@ -382,24 +376,20 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
                         }
                     });
                 });
-                
                 if (wordMatches > 0) {
                     score = score / Math.max(1, words.filter(w => w.length >= 3).length);
                     if (wordMatches >= 2) score += 0.2;
                 }
             }
-
             if (score > maxScore) {
                 maxScore = score;
                 matchedIntent = intent;
             }
         });
 
-        // 3. RESPUESTA SEGÚN MATCH
         if (matchedIntent && maxScore > 0.45) {
             const intent = matchedIntent as Intent;
             const targetUrl = getSafeUrl(slug, intent.link);
-            
             const isOnPage = pathname === targetUrl;
             const randomResponse = intent.responses[Math.floor(Math.random() * intent.responses.length)];
 
@@ -407,11 +397,7 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
                 if (isOnPage) {
                     responseMsg = { id: generateId(), role: "bot", text: "¡Excelente! Ya estás en la lista. \n\n👁️ **Haz clic en el ícono del OJO** a la derecha de la orden para editar.", timestamp: Date.now() };
                 } else {
-                    responseMsg = { 
-                        id: generateId(), role: "bot", 
-                        text: "Primero debemos ir al listado de Órdenes.", 
-                        actionLink: targetUrl, actionLabel: "Ir a Órdenes", icon: intent.icon, timestamp: Date.now() 
-                    };
+                    responseMsg = { id: generateId(), role: "bot", text: "Primero debemos ir al listado de Órdenes.", actionLink: targetUrl, actionLabel: "Ir a Órdenes", icon: intent.icon, timestamp: Date.now() };
                 }
             } 
             else if (!intent.link) {
@@ -441,7 +427,7 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
       setMessages(prev => [...prev, responseMsg!]);
       setIsTyping(false);
     }, thinkingTime);
-  }, [pathname, slug]);
+  }, [pathname, slug, countryConfig]);
 
   // --- HANDLERS ---
   const handleSend = () => {
@@ -465,7 +451,11 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
   const handleCalculate = () => {
     const val = parseFloat(calcAmount);
     if (isNaN(val)) return;
-    const tax = Math.round(val * 0.19);
+    
+    // ✅ CORRECCIÓN MASTER: Usar el taxRate real de la BD
+    const rate = taxRate / 100;
+    
+    const tax = Math.round(val * rate);
     setCalcResult({ net: val, tax: tax, total: val + tax });
   };
 
@@ -477,7 +467,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
   };
 
   // --- RENDERERS ---
-
   const renderDynamicSuggestions = () => {
     const isOrders = pathname.includes("/orders");
     const isInventory = pathname.includes("/inventory");
@@ -487,19 +476,14 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
 
     return (
         <div className="mt-5 w-full animate-in fade-in slide-in-from-bottom-3 duration-500">
-            {/* Barra de Herramientas */}
             <div className="flex gap-2 mb-3">
                 <button onClick={() => setMode("calculator")} className={STYLES.chipTool}><Calculator className="h-3.5 w-3.5"/> Calculadora</button>
                 <button onClick={() => setMode("notes")} className={STYLES.chipTool}><StickyNote className="h-3.5 w-3.5"/> Notas</button>
             </div>
-
-            {/* Título Sección */}
             <div className="flex items-center gap-1.5 mb-2 px-1 opacity-80">
                 <Sparkles className="h-3 w-3 text-orange-500 fill-orange-500" />
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sugerencias Inteligentes</span>
             </div>
-            
-            {/* GRID LAYOUT DE ACCIONES */}
             <div className="grid grid-cols-2 gap-2.5">
                 {isDashboard && (
                     <>
@@ -516,8 +500,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
                 {isInventory && (<button onClick={() => handleQuickAction("crear producto")} className={STYLES.chipAction}>➕ Nuevo Ítem</button>)}
                 {isCustomers && (<button onClick={() => handleQuickAction("crear cliente")} className={STYLES.chipAction}>➕ Nuevo Cliente</button>)}
                 {isVehicles && (<button onClick={() => handleQuickAction("crear auto")} className={STYLES.chipAction}>🚘 Nuevo Auto</button>)}
-                
-                {/* Fallback siempre útil */}
                 {!isDashboard && (
                     <button onClick={() => handleQuickAction("ir al inicio")} className={`${STYLES.chipTool} justify-center border-dashed bg-slate-50/50`}>🏠 Ir al Inicio</button>
                 )}
@@ -526,34 +508,37 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
     )
   };
 
-  const renderCalculator = () => (
-    <div className="flex-1 flex flex-col p-6 bg-slate-50/50">
-        <div className="mb-6">
-            <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
-                <Calculator className="h-3 w-3"/> Calculadora Rápida (IVA 19%)
-            </h3>
-            <div className="flex gap-2">
-                <Input 
-                    type="number" 
-                    placeholder="Monto Neto..." 
-                    value={calcAmount} 
-                    onChange={(e) => setCalcAmount(e.target.value)} 
-                    className="bg-white text-lg h-11 shadow-sm border-slate-200 focus-visible:ring-orange-500"
-                    onKeyDown={(e) => e.key === 'Enter' && handleCalculate()}
-                />
-                <Button onClick={handleCalculate} className={`${THEME.primary} h-11 px-6 font-bold shadow-md`}>Calc</Button>
+  const renderCalculator = () => {
+    return (
+        <div className="flex-1 flex flex-col p-6 bg-slate-50/50">
+            <div className="mb-6">
+                <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
+                    {/* ✅ MOSTRAMOS EL % REAL */}
+                    <Calculator className="h-3 w-3"/> Calculadora Rápida ({taxRate}%)
+                </h3>
+                <div className="flex gap-2">
+                    <Input 
+                        type="number" 
+                        placeholder="Monto Neto..." 
+                        value={calcAmount} 
+                        onChange={(e) => setCalcAmount(e.target.value)} 
+                        className="bg-white text-lg h-11 shadow-sm border-slate-200 focus-visible:ring-orange-500"
+                        onKeyDown={(e) => e.key === 'Enter' && handleCalculate()}
+                    />
+                    <Button onClick={handleCalculate} className={`${THEME.primary} h-11 px-6 font-bold shadow-md`}>Calc</Button>
+                </div>
             </div>
+            {calcResult && (
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-lg space-y-3 animate-in zoom-in-95 duration-200">
+                    <div className="flex justify-between text-sm text-slate-500"><span>Neto:</span><span className="font-mono">{countryConfig.currencySymbol}{calcResult.net.toLocaleString("es-CL")}</span></div>
+                    <div className="flex justify-between text-sm text-slate-500"><span>Impuesto ({taxRate}%):</span><span className="font-mono text-red-500">+{countryConfig.currencySymbol}{calcResult.tax.toLocaleString("es-CL")}</span></div>
+                    <div className="h-px bg-slate-100 my-1"/>
+                    <div className="flex justify-between font-bold text-xl text-slate-800"><span>Total:</span><span className="font-mono text-orange-600">{countryConfig.currencySymbol}{calcResult.total.toLocaleString("es-CL")}</span></div>
+                </div>
+            )}
         </div>
-        {calcResult && (
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-lg space-y-3 animate-in zoom-in-95 duration-200">
-                <div className="flex justify-between text-sm text-slate-500"><span>Neto:</span><span className="font-mono">${calcResult.net.toLocaleString("es-CL")}</span></div>
-                <div className="flex justify-between text-sm text-slate-500"><span>IVA (19%):</span><span className="font-mono text-red-500">+${calcResult.tax.toLocaleString("es-CL")}</span></div>
-                <div className="h-px bg-slate-100 my-1"/>
-                <div className="flex justify-between font-bold text-xl text-slate-800"><span>Total:</span><span className="font-mono text-orange-600">${calcResult.total.toLocaleString("es-CL")}</span></div>
-            </div>
-        )}
-    </div>
-  );
+    );
+  };
 
   const renderNotes = () => (
     <div className="flex-1 flex flex-col bg-slate-50/50 overflow-hidden">
@@ -600,12 +585,10 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
     </div>
   );
 
-  // --- RENDER MAIN ---
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-4 print:hidden font-sans">
       {isOpen && (
         <Card className="w-80 sm:w-96 h-137.5 max-h-[85vh] shadow-2xl border-slate-200 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300 overflow-hidden rounded-2xl ring-1 ring-black/5">
-          {/* HEADER CON GLASSMORPHISM */}
           <CardHeader className="bg-slate-900/95 backdrop-blur-md text-white p-4 flex flex-row justify-between items-center space-y-0 shrink-0 border-b border-slate-800">
             <div className="flex items-center gap-3">
                 {mode !== 'chat' && (
@@ -613,7 +596,7 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
                 )}
-                <div className={`p-2 rounded-xl transition-all duration-500 ${mode === 'chat' ? 'bg-gradient-to-br from-orange-500 to-red-600 shadow-lg shadow-orange-900/20' : mode === 'calculator' ? 'bg-green-500' : 'bg-yellow-500'}`}>
+                <div className={`p-2 rounded-xl transition-all duration-500 ${mode === 'chat' ? 'bg-linear-to-br from-orange-500 to-red-600 shadow-lg shadow-orange-900/20' : mode === 'calculator' ? 'bg-green-500' : 'bg-yellow-500'}`}>
                     {mode === 'chat' && <Bot className="h-5 w-5 text-white" />}
                     {mode === 'calculator' && <Calculator className="h-5 w-5 text-white" />}
                     {mode === 'notes' && <StickyNote className="h-5 w-5 text-white" />}
@@ -624,7 +607,7 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
                     </CardTitle>
                     <p className="text-[10px] text-slate-400 font-medium leading-none mt-0.5 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                        {mode === 'chat' ? 'Online • v12.1' : 'Herramienta'}
+                        {mode === 'chat' ? `Online • v12.1 (${countryCode})` : 'Herramienta'}
                     </p>
                 </div>
             </div>
@@ -640,7 +623,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
             </div>
           </CardHeader>
 
-          {/* CONTENIDO PRINCIPAL */}
           {mode === 'chat' && (
             <>
                 <CardContent className="flex-1 p-0 overflow-hidden bg-slate-50/30 relative">
@@ -649,7 +631,7 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
                             {messages.map((msg) => (
                                 <div key={msg.id} className={`flex ${msg.role === "bot" ? "justify-start" : "justify-end"} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                                     {msg.role === 'bot' && (
-                                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-orange-100 to-orange-200 border border-orange-200 flex items-center justify-center mr-2 shrink-0 mt-1">
+                                        <div className="w-6 h-6 rounded-full bg-linear-to-br from-orange-100 to-orange-200 border border-orange-200 flex items-center justify-center mr-2 shrink-0 mt-1">
                                             <Bot className="h-3.5 w-3.5 text-orange-600" />
                                         </div>
                                     )}

@@ -7,7 +7,7 @@ import { createLog } from "@/lib/create-log";
 
 /**
  * GUARDAR CLIENTE (CREAR O ACTUALIZAR)
- * Renombrado a createCustomer para coincidir con los componentes
+ * Ahora soporta 'country' para la localización internacional.
  */
 export async function createCustomer(formData: FormData) {
   try {
@@ -37,7 +37,13 @@ export async function createCustomer(formData: FormData) {
     const isCompany = formData.get("isCompany") === "on";
     const firstName = formData.get("firstName")?.toString();
     const lastName = formData.get("lastName")?.toString() || "";
-    const taxId = formData.get("taxId")?.toString() || "";
+    
+    // 🔥 AQUÍ ESTÁ LA MAGIA DE LA INTERNACIONALIZACIÓN
+    // 'taxId' viene del formulario dinámico (RUT, DNI, etc.)
+    const taxId = formData.get("taxId")?.toString() || ""; 
+    // 'country' viene del selector de país (CL, AR, MX...)
+    const country = formData.get("country")?.toString() || "CL"; // Default Chile si falla
+
     const email = formData.get("email")?.toString() || "";
     const phone = formData.get("phone")?.toString() || "";
     const address = formData.get("address")?.toString() || "";
@@ -53,7 +59,8 @@ export async function createCustomer(formData: FormData) {
         firstName,
         lastName: isCompany ? "" : lastName,
         isCompany,
-        taxId,
+        taxId,    // Guardamos el documento
+        country,  // ✅ Guardamos el país de origen
         email,
         phone,
         address
@@ -89,6 +96,10 @@ export async function createCustomer(formData: FormData) {
     return { success: true, id: customer.id };
   } catch (error: any) {
     console.error("Error createCustomer:", error);
+    // Manejo de error de unicidad (ej: RUT repetido)
+    if (error.code === 'P2002') {
+        return { success: false, error: "Ya existe un cliente con ese Documento/RUT en este taller." };
+    }
     return { success: false, error: error.message || "Error al guardar" };
   }
 }
@@ -127,7 +138,7 @@ export async function deleteCustomer(customerId: string) {
         data: { deletedAt: new Date() }
       });
 
-      // Marcar sus vehículos como eliminados también
+      // Marcar sus vehículos como eliminados también (Cascada lógica)
       await tx.vehicle.updateMany({
         where: { customerId, tenantId: tenant.id },
         data: { deletedAt: new Date() }

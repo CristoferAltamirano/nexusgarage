@@ -20,10 +20,12 @@ import { CreateOrderDialog } from "@/components/dashboard/CreateOrderDialog";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { DownloadReportButton } from "@/components/dashboard/DownloadReportButton";
 
-// ✅ Importamos la nueva Server Action optimizada
 import { getRevenueReport } from "@/actions/get-revenue-report";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+
+// ✅ NUEVO: Importamos el helper de moneda inteligente
+import { formatCurrency } from "@/lib/format";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -41,15 +43,13 @@ export default async function DashboardPage(props: Props) {
   if (!tenant) return <div>Taller no encontrado</div>;
 
   // ================= 2. CONSULTAS PARALELAS OPTIMIZADAS =================
-  // Separamos lo Financiero (Action) de lo Operacional (Queries ligeras)
-  
   const [revenueData, operationalData] = await Promise.all([
-    // A. Datos Financieros (Tu nueva Action) 💰
+    // A. Datos Financieros
     getRevenueReport(tenant.id, "this_month"),
 
-    // B. Datos Operacionales (Lo que pasa hoy en el taller) 🔧
+    // B. Datos Operacionales
     Promise.all([
-      // 0. Vehículos (para el dropdown de nueva orden)
+      // 0. Vehículos
       db.vehicle.findMany({
         where: { tenantId: tenant.id, deletedAt: null },
         select: {
@@ -59,7 +59,7 @@ export default async function DashboardPage(props: Props) {
         orderBy: { createdAt: 'desc' },
         take: 10
       }),
-      // 1. Órdenes Recientes (Mostramos PENDIENTES y EN PROCESO aquí, no solo las pagadas)
+      // 1. Órdenes Recientes
       db.workOrder.findMany({
         where: { tenantId: tenant.id, deletedAt: null },
         select: {
@@ -74,7 +74,7 @@ export default async function DashboardPage(props: Props) {
         orderBy: { createdAt: "desc" },
         take: 5,
       }),
-      // 2. Conteo de Autos en Taller (Activos)
+      // 2. Conteo de Autos Activos
       db.workOrder.count({
         where: { 
           tenantId: tenant.id, 
@@ -82,20 +82,16 @@ export default async function DashboardPage(props: Props) {
           deletedAt: null 
         }
       }),
-      // 3. Conteo de Clientes Totales
+      // 3. Conteo de Clientes
       db.customer.count({ where: { tenantId: tenant.id, deletedAt: null } }),
     ])
   ]);
 
-  // Desestructuramos los datos operacionales
   const [vehicles, recentOrders, activeOrdersCount, customersCount] = operationalData;
 
   // ================= 3. ADAPTACIÓN DE DATOS =================
-  
-  // Adaptamos el chartData de la Action al formato que espera tu componente RevenueChart actual
-  // La Action devuelve { date, net, tax, total }, el Chart espera { name, total }
   const chartAdaptedData = revenueData.chartData.map(item => ({
-    name: item.date, // Ej: "Ene 2026"
+    name: item.date,
     total: item.total
   }));
 
@@ -113,7 +109,6 @@ export default async function DashboardPage(props: Props) {
         </div>
         
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          {/* Usamos el nuevo reporte aquí también si quisiéramos descargar */}
           <DownloadReportButton tenantId={tenant.id} />
           <CreateOrderDialog
             tenantId={tenant.id}
@@ -123,7 +118,7 @@ export default async function DashboardPage(props: Props) {
         </div>
       </div>
 
-      {/* ACCESOS RÁPIDOS (Sin cambios) */}
+      {/* ACCESOS RÁPIDOS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Link href={`/${slug}/customers`}>
             <div className="group cursor-pointer rounded-xl border border-slate-200 bg-white p-4 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10 transition-all flex flex-col items-center justify-center gap-2 h-24">
@@ -162,22 +157,23 @@ export default async function DashboardPage(props: Props) {
       {/* TARJETAS DE ESTADÍSTICAS */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 
-        {/* Card 1: Ingresos (AHORA USA DATA REAL DE LA ACTION) */}
+        {/* Card 1: Ingresos */}
         <div className="rounded-xl border bg-white shadow-sm p-6 relative overflow-hidden group hover:shadow-md transition-all">
             <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
             <div className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <h3 className="tracking-tight text-sm font-semibold text-slate-500 uppercase">Ingresos (Mes)</h3>
                 <div className="h-9 w-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
-                     <DollarSign className="h-5 w-5" />
+                      <DollarSign className="h-5 w-5" />
                 </div>
             </div>
             <div className="text-2xl font-black text-slate-900 mt-2">
-                ${revenueData.kpi.totalRevenue.toLocaleString("es-CL")}
+                {/* 🌍 FORMATO DINÁMICO */}
+                {formatCurrency(revenueData.kpi.totalRevenue, tenant.country)}
             </div>
             <p className="text-xs text-emerald-600 flex items-center mt-1 font-bold">
                 <TrendingUp className="h-3 w-3 mr-1" /> 
-                {/* Mostramos el Neto como dato extra si quieres, o solo texto */}
-                Neto: ${revenueData.kpi.totalNet.toLocaleString("es-CL")}
+                {/* 🌍 FORMATO DINÁMICO */}
+                Neto: {formatCurrency(revenueData.kpi.totalNet, tenant.country)}
             </p>
         </div>
 
@@ -224,7 +220,7 @@ export default async function DashboardPage(props: Props) {
       {/* SECCIÓN PRINCIPAL */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
 
-        {/* GRÁFICO (AHORA USA DATA ADAPTADA DE LA ACTION) */}
+        {/* GRÁFICO */}
         <div className="xl:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden">
              <div className="p-6 border-b border-slate-100 bg-slate-50/50">
                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -234,13 +230,12 @@ export default async function DashboardPage(props: Props) {
              </div>
              <div className="p-6">
                  <div className="w-full h-[350px]">
-                    {/* Renderiza los datos agrupados por la Action */}
                     <RevenueChart data={chartAdaptedData} />
                  </div>
              </div>
         </div>
 
-        {/* TABLA DE ÓRDENES RECIENTES (OPERACIONAL) */}
+        {/* TABLA DE ÓRDENES RECIENTES */}
         <div className="xl:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                  <h3 className="text-lg font-bold text-slate-900">Órdenes Recientes</h3>
@@ -290,9 +285,9 @@ export default async function DashboardPage(props: Props) {
                                          order.status === 'CANCELLED' ? 'bg-red-50 text-red-700 border border-red-100' :
                                          'bg-orange-50 text-orange-700 border border-orange-100'
                                      }`}>
-                                             {order.status === 'DELIVERED' ? 'Entregado' : 
-                                              order.status === 'COMPLETED' ? 'Terminado' : 
-                                              order.status === 'CANCELLED' ? 'Cancelado' : 'Pendiente'}
+                                              {order.status === 'DELIVERED' ? 'Entregado' : 
+                                               order.status === 'COMPLETED' ? 'Terminado' : 
+                                               order.status === 'CANCELLED' ? 'Cancelado' : 'Pendiente'}
                                      </span>
                                 </td>
                                 <td className="p-6 align-middle hidden md:table-cell">
@@ -302,7 +297,8 @@ export default async function DashboardPage(props: Props) {
                                     </div>
                                 </td>
                                 <td className="p-4 md:p-6 align-middle text-right font-black text-slate-800 text-sm">
-                                    ${order.totalAmount.toLocaleString("es-CL")}
+                                    {/* 🌍 FORMATO DINÁMICO */}
+                                    {formatCurrency(order.totalAmount, tenant.country)}
                                 </td>
                                 <td className="p-4 md:p-6 align-middle text-right space-x-1">
                                     <Link href={`/${slug}/orders/${order.id}`}>

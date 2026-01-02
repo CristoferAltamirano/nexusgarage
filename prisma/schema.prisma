@@ -26,6 +26,10 @@ model Tenant {
   // Por defecto 19% (Chile). Si es Zona Franca, se puede cambiar a 0.
   taxRate   Int      @default(19)
 
+  // ✅ NUEVO: Configuración Regional del Taller
+  country   String   @default("CL") // Código ISO (CL, AR, MX, etc.)
+  currency  String   @default("CLP") // Moneda (CLP, USD, EUR)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
     
@@ -57,7 +61,14 @@ model Customer {
   id        String   @id @default(uuid())
   firstName String
   lastName  String
+  
+  // ⚠️ Mantenemos 'taxId' (antes 'rut' en tu mente, pero en el schema anterior ya se llamaba taxId, ¡así que perfecto!)
+  // Este campo servirá para RUT, CUIT, DNI, RFC, etc. No hay que renombrarlo.
   taxId     String?
+  
+  // ✅ NUEVO: País del cliente (puede ser distinto al del taller)
+  country   String   @default("CL") 
+
   isCompany Boolean  @default(false) 
   email     String?
   phone     String
@@ -73,7 +84,7 @@ model Customer {
   deletedAt DateTime? // ♻️ Papelera
 
   @@index([tenantId])              
-  @@index([tenantId, taxId])       
+  @@index([tenantId, taxId])        
   @@index([tenantId, lastName])
   @@index([deletedAt]) // Para filtrar rápido los borrados
 }
@@ -214,5 +225,5 @@ enum Status {
   WAITING_PARTS
   COMPLETED
   DELIVERED
-  CANCELLED
+  CANCELLED // ✅ Agregué CANCELLED por si acaso, es útil tenerlo
 }
