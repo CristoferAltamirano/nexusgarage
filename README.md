@@ -2,7 +2,7 @@
 
 <div align="center">
 
-  <img src="https://github.com/user-attachments/assets/c62b9b1e-63c2-49e4-9ad5-b47492ada63b" alt="NexusGarage Banner" width="100%" />
+  <img src="https://github.com/user-attachments/assets/b0f6f802-d2bb-47da-8af5-4ea12963250e" alt="NexusGarage Banner" width="100%" />
   
   <p align="center">
     <strong>El sistema operativo integral para la gestión de talleres mecánicos modernos.</strong>
