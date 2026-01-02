@@ -5,12 +5,17 @@ import { revalidatePath } from "next/cache";
 import { currentUser } from "@clerk/nextjs/server";
 import { Status } from "@prisma/client";
 import { createLog } from "@/lib/create-log";
-// Asegúrate de que este archivo exista, si no, avísame
 import { updateOrderTotals } from "@/lib/order-utils";
+
+// 📧 EMAIL IMPORTS
+import { Resend } from "resend";
+import { StatusEmail } from "@/components/emails/StatusEmail";
+
+// Inicializamos Resend
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 /**
  * 1. GUARDAR ORDEN DE TRABAJO (CREAR)
- * Nota: Aquí asumimos la creación básica de la orden desde el modal inicial.
  */
 export async function saveOrder(formData: FormData) {
   try {
@@ -20,7 +25,6 @@ export async function saveOrder(formData: FormData) {
     const formTenantId = formData.get("tenantId")?.toString();
     if (!formTenantId) return { success: false, error: "Falta el ID del taller" };
 
-    // 1. Validar permisos en el taller específico
     const tenant = await db.tenant.findFirst({
       where: {
         id: formTenantId,
@@ -35,7 +39,7 @@ export async function saveOrder(formData: FormData) {
 
     const plate = formData.get("plate")?.toString().toUpperCase().trim();
     const description = formData.get("description")?.toString().trim();
-    const slug = formData.get("slug")?.toString(); // Slug del taller para revalidar
+    const slug = formData.get("slug")?.toString(); 
     
     const kilometer = parseInt(formData.get("kilometer")?.toString() || "0", 10);
     const fuelLevel = parseInt(formData.get("fuelLevel")?.toString() || "0", 10);
@@ -45,7 +49,6 @@ export async function saveOrder(formData: FormData) {
     }
 
     const order = await db.$transaction(async (tx) => {
-      // Buscar vehículo existente en ESTE taller
       const vehicle = await tx.vehicle.findFirst({
         where: { 
           plateOrSerial: plate, 
@@ -58,7 +61,6 @@ export async function saveOrder(formData: FormData) {
         throw new Error(`El vehículo con patente ${plate} no está registrado en este taller.`);
       }
 
-      // Crear la orden vinculada al vehículo
       const newOrder = await tx.workOrder.create({
         data: {
           tenantId: tenant.id,
@@ -102,14 +104,12 @@ export async function deleteOrder(orderId: string) {
     const user = await currentUser();
     if (!user) return { success: false, error: "No autorizado" };
 
-    // 1. Buscar la orden para saber su Tenant
     const order = await db.workOrder.findUnique({
         where: { id: orderId }
     });
 
     if (!order) return { success: false, error: "Orden no encontrada" };
 
-    // 2. Validar permisos en ESE tenant
     const tenant = await db.tenant.findFirst({
         where: {
             id: order.tenantId,
@@ -123,7 +123,6 @@ export async function deleteOrder(orderId: string) {
     if (!tenant) return { success: false, error: "No tienes permiso para eliminar esta orden" };
 
     await db.$transaction(async (tx) => {
-      // Soft Delete
       await tx.workOrder.update({
         where: { id: orderId },
         data: { deletedAt: new Date() }
@@ -132,7 +131,6 @@ export async function deleteOrder(orderId: string) {
       await createLog(tenant.id, "DELETE_ORDER", "WorkOrder", orderId, `Orden eliminada`);
     });
 
-    // Revalidamos la ruta principal de órdenes
     revalidatePath(`/${tenant.slug}/orders`);
     revalidatePath(`/${tenant.slug}/dashboard`);
     
@@ -155,11 +153,9 @@ export async function addOrderItem(formData: FormData) {
     const quantity = parseInt(formData.get("quantity") as string, 10) || 1;
     const slug = formData.get("slug") as string;
 
-    // Buscar orden para obtener tenantId
     const order = await db.workOrder.findUnique({ where: { id: orderId } });
     if (!order) return { success: false, error: "Orden no encontrada" };
 
-    // Validar permisos en el tenant de la orden
     const tenant = await db.tenant.findFirst({
         where: {
             id: order.tenantId,
@@ -179,7 +175,6 @@ export async function addOrderItem(formData: FormData) {
           throw new Error("Producto no válido o de otro taller");
       }
 
-      // Descontar stock si no es mano de obra
       if (product.category !== "Mano de Obra") {
         if (product.stock < quantity) throw new Error(`Stock insuficiente. Disponible: ${product.stock}`);
         
@@ -199,7 +194,6 @@ export async function addOrderItem(formData: FormData) {
         }
       });
 
-      // Actualizar totales de la orden
       await updateOrderTotals(orderId, tx);
     });
 
@@ -218,7 +212,6 @@ export async function deleteOrderItem(itemId: string, orderId: string, slug: str
     const user = await currentUser();
     if (!user) return { success: false, error: "No autorizado" };
 
-    // Buscar orden para validar permisos
     const order = await db.workOrder.findUnique({ where: { id: orderId } });
     if (!order) return { success: false, error: "Orden no encontrada" };
 
@@ -242,7 +235,6 @@ export async function deleteOrderItem(itemId: string, orderId: string, slug: str
 
       if (!item) throw new Error("Ítem no encontrado");
 
-      // Devolver stock si aplica
       if (item.productId && item.product?.category !== "Mano de Obra") {
         await tx.serviceProduct.update({
           where: { id: item.productId },
@@ -262,16 +254,26 @@ export async function deleteOrderItem(itemId: string, orderId: string, slug: str
 }
 
 /**
- * 5. ACTUALIZAR ESTADO DE LA ORDEN
+ * 5. ACTUALIZAR ESTADO DE LA ORDEN (CON ENVÍO DE EMAIL 📧)
  */
 export async function updateOrderStatus(orderId: string, newStatus: string, slug: string) {
   try {
     const user = await currentUser();
     if (!user) return { success: false, error: "No autorizado" };
 
-    const order = await db.workOrder.findUnique({ where: { id: orderId } });
+    // ✅ EAGER LOADING: Traemos también el Vehículo y el Cliente para el email
+    const order = await db.workOrder.findUnique({ 
+        where: { id: orderId },
+        include: {
+            vehicle: {
+                include: { customer: true }
+            }
+        }
+    });
+
     if (!order) return { success: false, error: "Orden no encontrada" };
 
+    // Buscamos el taller y traemos su email y nombre
     const tenant = await db.tenant.findFirst({
         where: {
             id: order.tenantId,
@@ -279,6 +281,14 @@ export async function updateOrderStatus(orderId: string, newStatus: string, slug
                 { userId: user.id },
                 { users: { some: { id: user.id } } }
             ]
+        },
+        select: {
+            id: true,
+            slug: true,
+            name: true,
+            email: true, // Importante para Reply-To
+            userId: true,
+            users: true
         }
     });
 
@@ -286,6 +296,7 @@ export async function updateOrderStatus(orderId: string, newStatus: string, slug
 
     const nextStatus = newStatus as Status;
 
+    // 1. ACTUALIZAR BASE DE DATOS
     await db.$transaction(async (tx) => {
       const isFinished = nextStatus === "COMPLETED" || nextStatus === "DELIVERED";
 
@@ -299,6 +310,36 @@ export async function updateOrderStatus(orderId: string, newStatus: string, slug
 
       await createLog(tenant.id, "UPDATE_STATUS", "WorkOrder", orderId, `Estado cambiado a: ${nextStatus}`);
     });
+
+    // 2. ENVIAR CORREO (Fail-Safe Strategy) 📧
+    try {
+        const customerEmail = order.vehicle.customer.email;
+        
+        // Solo enviamos si el cliente tiene email
+        if (customerEmail) {
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://nexusgarage.vercel.app";
+            const orderUrl = `${baseUrl}/${slug}/orders/${orderId}/print`;
+
+            await resend.emails.send({
+                from: "NexusGarage <onboarding@resend.dev>", 
+                to: customerEmail,
+                // ✅ CORRECCIÓN: Usamos 'replyTo' (camelCase) en lugar de 'reply_to'
+                replyTo: tenant.email || undefined, 
+                subject: `Actualización Orden #${order.number} - ${tenant.name}`,
+                react: StatusEmail({
+                    customerName: order.vehicle.customer.firstName,
+                    vehicleModel: `${order.vehicle.brand} ${order.vehicle.model}`,
+                    status: nextStatus,
+                    orderNumber: order.number,
+                    tenantName: tenant.name,
+                    orderUrl: orderUrl
+                })
+            });
+            console.log(`[EMAIL SENT]: Correo enviado a ${customerEmail}`);
+        }
+    } catch (emailError) {
+        console.error("[EMAIL_ERROR]: No se pudo enviar el correo", emailError);
+    }
 
     revalidatePath(`/${slug}/orders/${orderId}`);
     revalidatePath(`/${slug}/dashboard`);

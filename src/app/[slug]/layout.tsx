@@ -6,6 +6,8 @@ import { MobileSidebar } from "@/components/dashboard/MobileSidebar";
 import { currentUser } from "@clerk/nextjs/server"; 
 import { UserButton } from "@clerk/nextjs"; 
 import { ShieldAlert } from "lucide-react";
+// ✅ IMPORTAMOS EL BOT ASISTENTE
+import { NexusAssistant } from "@/components/ai/NexusAssistant"; 
 
 export default async function DashboardLayout({
   children,
@@ -26,6 +28,7 @@ export default async function DashboardLayout({
   if (!tenant) redirect("/");
 
   // SEGURIDAD: Verificar propiedad del taller
+  // Nota: Si en el futuro agregas empleados, aquí deberás revisar también la tabla de miembros.
   if (tenant.userId !== user.id) {
     return (
         <div className="flex h-screen w-full flex-col items-center justify-center gap-6 bg-slate-950 text-slate-200">
@@ -61,7 +64,6 @@ export default async function DashboardLayout({
         
         {/* ========================================================= */}
         {/* FONDO LIMPIO: PUNTOS SUTILES (DOT PATTERN) */}
-        {/* Mucho más suave a la vista que la cuadrícula completa */}
         {/* ========================================================= */}
         <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:20px_20px] opacity-40 pointer-events-none z-0"></div>
         
@@ -95,6 +97,13 @@ export default async function DashboardLayout({
           {children}
         </main>
       </div>
+
+      {/* ✅ NEXUS BOT INTEGRADO (Siempre visible y por encima de todo) */}
+      <NexusAssistant 
+        slug={slug} 
+        userName={user.firstName || "Colega"} 
+      />
+
     </div>
   );
 }

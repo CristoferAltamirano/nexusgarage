@@ -23,9 +23,12 @@ interface Props {
 }
 
 export function GlobalSearch({ tenantId, slug }: Props) {
+  // 1. ESTADO DE MONTAJE (La solución al error de Hidratación)
+  const [isMounted, setIsMounted] = React.useState(false)
+
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
-  const [debouncedQuery] = useDebounce(query, 300) // Espera 300ms antes de buscar
+  const [debouncedQuery] = useDebounce(query, 300) 
   const [data, setData] = React.useState<{
     customers: any[], 
     vehicles: any[]
@@ -33,6 +36,13 @@ export function GlobalSearch({ tenantId, slug }: Props) {
   
   const [loading, setLoading] = React.useState(false)
   const router = useRouter()
+
+  // 2. EFECTO DE MONTAJE
+  // Esto asegura que el componente sepa cuándo ya está corriendo en el cliente
+  // y evita que los IDs aleatorios del servidor choquen con los del cliente.
+  React.useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Abrir con Ctrl+K o Cmd+K
   React.useEffect(() => {
@@ -63,6 +73,24 @@ export function GlobalSearch({ tenantId, slug }: Props) {
     router.push(url)
   }
 
+  // SI NO ESTÁ MONTADO, PODEMOS RETORNAR NULL O SOLO EL BOTÓN (SKELETON)
+  // Para evitar saltos visuales (Layout Shift), renderizamos el botón, 
+  // pero NO el CommandDialog hasta que esté montado.
+  if (!isMounted) {
+    return (
+      <Button
+        variant="outline"
+        className="relative h-9 w-full justify-start rounded-[0.5rem] bg-background text-sm font-normal text-muted-foreground shadow-none sm:pr-12 md:w-40 lg:w-64"
+      >
+        <span className="hidden lg:inline-flex">Buscar...</span>
+        <span className="inline-flex lg:hidden">Buscar...</span>
+        <kbd className="pointer-events-none absolute right-[0.3rem] top-[0.3rem] hidden h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex">
+          <span className="text-xs">⌘</span>K
+        </kbd>
+      </Button>
+    )
+  }
+
   return (
     <>
       {/* 1. EL BOTÓN QUE SE VE EN EL HEADER */}
@@ -78,7 +106,7 @@ export function GlobalSearch({ tenantId, slug }: Props) {
         </kbd>
       </Button>
 
-      {/* 2. EL DIÁLOGO QUE SE ABRE */}
+      {/* 2. EL DIÁLOGO QUE SE ABRE (Solo se renderiza tras el montaje) */}
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput 
             placeholder="Escribe nombre, rut o patente..." 
@@ -99,7 +127,7 @@ export function GlobalSearch({ tenantId, slug }: Props) {
               {data.customers.map((customer) => (
                 <CommandItem
                   key={customer.id}
-                  value={`${customer.firstName} ${customer.lastName}`} // <--- IMPORTANTE: Value único
+                  value={`${customer.firstName} ${customer.lastName}`} 
                   onSelect={() => handleSelect(`/${slug}/customers`)} 
                 >
                   <User className="mr-2 h-4 w-4" />
@@ -118,7 +146,7 @@ export function GlobalSearch({ tenantId, slug }: Props) {
              {data.vehicles.map((car) => (
                <CommandItem
                  key={car.id}
-                 value={car.plateOrSerial} // <--- IMPORTANTE: Value único
+                 value={car.plateOrSerial}
                  onSelect={() => handleSelect(`/${slug}/vehicles`)} 
                >
                  <CarFront className="mr-2 h-4 w-4" />

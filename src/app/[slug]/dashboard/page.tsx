@@ -1,6 +1,4 @@
 import { db } from "@/lib/db";
-import { format, subDays, startOfDay, endOfDay } from "date-fns";
-import { es } from "date-fns/locale";
 import Link from "next/link";
 import { Status } from "@prisma/client";
 import {
@@ -8,12 +6,12 @@ import {
   Users,
   DollarSign,
   Wrench,
-  CalendarDays,
-  Eye,
   TrendingUp,
   Package,
   FileText,
   Printer,
+  Eye,
+  CalendarDays,
   BarChart3
 } from "lucide-react";
 
@@ -21,6 +19,11 @@ import { Button } from "@/components/ui/button";
 import { CreateOrderDialog } from "@/components/dashboard/CreateOrderDialog";
 import { RevenueChart } from "@/components/dashboard/RevenueChart";
 import { DownloadReportButton } from "@/components/dashboard/DownloadReportButton";
+
+// ✅ Importamos la nueva Server Action optimizada
+import { getRevenueReport } from "@/actions/get-revenue-report";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -30,105 +33,71 @@ export default async function DashboardPage(props: Props) {
   const params = await props.params;
   const { slug } = params;
 
+  // 1. Validación rápida del Tenant
   const tenant = await db.tenant.findUnique({
     where: { slug },
   });
 
   if (!tenant) return <div>Taller no encontrado</div>;
 
-  // ================= 1. PREPARACIÓN DE FECHAS =================
-  const today = new Date();
-  const daysToQuery = Array.from({ length: 7 }, (_, i) => {
-      const date = subDays(today, 6 - i);
-      return {
-          date,
-          label: format(date, "eee dd", { locale: es }),
-          start: startOfDay(date),
-          end: endOfDay(date)
-      };
-  });
-
-  const revenueStatuses = [Status.COMPLETED, Status.DELIVERED];
-
-  // ================= 2. CONSULTAS A LA BD (PARALELAS Y ORGANIZADAS) =================
+  // ================= 2. CONSULTAS PARALELAS OPTIMIZADAS =================
+  // Separamos lo Financiero (Action) de lo Operacional (Queries ligeras)
   
-  // A. Promesa para datos del gráfico (7 días)
-  const chartPromise = Promise.all(
-    daysToQuery.map(day => 
-      db.workOrder.aggregate({
-          where: {
-              tenantId: tenant.id,
-              status: { in: revenueStatuses }, 
-              deletedAt: null,
-              endDate: { gte: day.start, lte: day.end } 
-          },
-          _sum: { totalAmount: true }
-      })
-    )
-  );
+  const [revenueData, operationalData] = await Promise.all([
+    // A. Datos Financieros (Tu nueva Action) 💰
+    getRevenueReport(tenant.id, "this_month"),
 
-  // B. Promesa para datos generales (Vehículos, Órdenes, Contadores)
-  const generalDataPromise = Promise.all([
-      // 0. Vehículos recientes
+    // B. Datos Operacionales (Lo que pasa hoy en el taller) 🔧
+    Promise.all([
+      // 0. Vehículos (para el dropdown de nueva orden)
       db.vehicle.findMany({
-          where: { tenantId: tenant.id, deletedAt: null },
-          select: {
-              id: true, plateOrSerial: true, brand: true, model: true,
-              customer: { select: { firstName: true, lastName: true } }
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 10 
+        where: { tenantId: tenant.id, deletedAt: null },
+        select: {
+          id: true, plateOrSerial: true, brand: true, model: true,
+          customer: { select: { firstName: true, lastName: true } }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
       }),
-      // 1. Órdenes Recientes
+      // 1. Órdenes Recientes (Mostramos PENDIENTES y EN PROCESO aquí, no solo las pagadas)
       db.workOrder.findMany({
-          where: { tenantId: tenant.id, deletedAt: null },
-          select: {
-              id: true, number: true, status: true, startDate: true, totalAmount: true,
-              vehicle: {
-                  select: {
-                      brand: true, model: true,
-                      customer: { select: { firstName: true, lastName: true } }
-                  }
-              }
-          },
-          orderBy: { createdAt: "desc" },
-          take: 5,
-      }),
-      // 2. Conteo Activas
-      db.workOrder.count({
-          where: { 
-            tenantId: tenant.id, 
-            status: { notIn: [Status.DELIVERED, Status.COMPLETED, Status.CANCELLED] }, 
-            deletedAt: null 
+        where: { tenantId: tenant.id, deletedAt: null },
+        select: {
+          id: true, number: true, status: true, startDate: true, totalAmount: true,
+          vehicle: {
+            select: {
+              brand: true, model: true,
+              customer: { select: { firstName: true, lastName: true } }
+            }
           }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
       }),
-      // 3. Conteo Clientes
+      // 2. Conteo de Autos en Taller (Activos)
+      db.workOrder.count({
+        where: { 
+          tenantId: tenant.id, 
+          status: { notIn: [Status.DELIVERED, Status.COMPLETED, Status.CANCELLED] }, 
+          deletedAt: null 
+        }
+      }),
+      // 3. Conteo de Clientes Totales
       db.customer.count({ where: { tenantId: tenant.id, deletedAt: null } }),
-      // 4. Ingresos Totales Históricos
-      db.workOrder.aggregate({
-          where: { 
-            tenantId: tenant.id, 
-            status: { in: revenueStatuses }, 
-            deletedAt: null 
-          },
-          _sum: { totalAmount: true }
-      })
+    ])
   ]);
 
-  // Ejecutamos ambas promesas grandes en paralelo
-  const [chartRawData, [vehicles, recentOrders, activeOrdersCount, customersCount, totalRevenue]] = await Promise.all([
-    chartPromise,
-    generalDataPromise
-  ]);
+  // Desestructuramos los datos operacionales
+  const [vehicles, recentOrders, activeOrdersCount, customersCount] = operationalData;
 
-  // ================= 3. PROCESAMIENTO DE DATOS =================
-
-  const last7DaysData = chartRawData.map((res, index) => ({
-      name: daysToQuery[index].label,
-      total: res._sum.totalAmount || 0
+  // ================= 3. ADAPTACIÓN DE DATOS =================
+  
+  // Adaptamos el chartData de la Action al formato que espera tu componente RevenueChart actual
+  // La Action devuelve { date, net, tax, total }, el Chart espera { name, total }
+  const chartAdaptedData = revenueData.chartData.map(item => ({
+    name: item.date, // Ej: "Ene 2026"
+    total: item.total
   }));
-
-  const totalRevenueAmount = totalRevenue._sum.totalAmount || 0;
 
   // ================= 4. RENDERIZADO =================
   return (
@@ -138,12 +107,13 @@ export default async function DashboardPage(props: Props) {
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
             <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">
-                Dashboard <span className="text-orange-600">Pro</span>
+                Nexus<span className="text-orange-600">Garage</span>
             </h2>
-            <p className="text-slate-500">Panel de control general del taller.</p>
+            <p className="text-slate-500">Resumen de operaciones y finanzas.</p>
         </div>
         
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {/* Usamos el nuevo reporte aquí también si quisiéramos descargar */}
           <DownloadReportButton tenantId={tenant.id} />
           <CreateOrderDialog
             tenantId={tenant.id}
@@ -153,7 +123,7 @@ export default async function DashboardPage(props: Props) {
         </div>
       </div>
 
-      {/* ACCESOS RÁPIDOS */}
+      {/* ACCESOS RÁPIDOS (Sin cambios) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Link href={`/${slug}/customers`}>
             <div className="group cursor-pointer rounded-xl border border-slate-200 bg-white p-4 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10 transition-all flex flex-col items-center justify-center gap-2 h-24">
@@ -163,7 +133,6 @@ export default async function DashboardPage(props: Props) {
                 <span className="text-sm font-bold text-slate-700 group-hover:text-orange-700">Clientes</span>
             </div>
         </Link>
-
         <Link href={`/${slug}/vehicles`}>
             <div className="group cursor-pointer rounded-xl border border-slate-200 bg-white p-4 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10 transition-all flex flex-col items-center justify-center gap-2 h-24">
                 <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-600 group-hover:bg-orange-600 group-hover:text-white transition-colors flex items-center justify-center">
@@ -172,7 +141,6 @@ export default async function DashboardPage(props: Props) {
                 <span className="text-sm font-bold text-slate-700 group-hover:text-orange-700">Vehículos</span>
             </div>
         </Link>
-
         <Link href={`/${slug}/settings/catalog`}>
             <div className="group cursor-pointer rounded-xl border border-slate-200 bg-white p-4 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10 transition-all flex flex-col items-center justify-center gap-2 h-24">
                 <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-600 group-hover:bg-orange-600 group-hover:text-white transition-colors flex items-center justify-center">
@@ -181,7 +149,6 @@ export default async function DashboardPage(props: Props) {
                 <span className="text-sm font-bold text-slate-700 group-hover:text-orange-700">Inventario</span>
             </div>
         </Link>
-
         <Link href={`/${slug}/orders`}>
             <div className="group cursor-pointer rounded-xl border border-slate-200 bg-white p-4 hover:border-orange-500 hover:shadow-lg hover:shadow-orange-500/10 transition-all flex flex-col items-center justify-center gap-2 h-24">
                 <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-600 group-hover:bg-orange-600 group-hover:text-white transition-colors flex items-center justify-center">
@@ -195,20 +162,22 @@ export default async function DashboardPage(props: Props) {
       {/* TARJETAS DE ESTADÍSTICAS */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 
-        {/* Card 1: Ingresos */}
+        {/* Card 1: Ingresos (AHORA USA DATA REAL DE LA ACTION) */}
         <div className="rounded-xl border bg-white shadow-sm p-6 relative overflow-hidden group hover:shadow-md transition-all">
             <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
             <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <h3 className="tracking-tight text-sm font-semibold text-slate-500 uppercase">Ingresos Históricos</h3>
+                <h3 className="tracking-tight text-sm font-semibold text-slate-500 uppercase">Ingresos (Mes)</h3>
                 <div className="h-9 w-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
                      <DollarSign className="h-5 w-5" />
                 </div>
             </div>
             <div className="text-2xl font-black text-slate-900 mt-2">
-                ${totalRevenueAmount.toLocaleString("es-CL")}
+                ${revenueData.kpi.totalRevenue.toLocaleString("es-CL")}
             </div>
             <p className="text-xs text-emerald-600 flex items-center mt-1 font-bold">
-                <TrendingUp className="h-3 w-3 mr-1" /> Total facturado
+                <TrendingUp className="h-3 w-3 mr-1" /> 
+                {/* Mostramos el Neto como dato extra si quieres, o solo texto */}
+                Neto: ${revenueData.kpi.totalNet.toLocaleString("es-CL")}
             </p>
         </div>
 
@@ -255,23 +224,23 @@ export default async function DashboardPage(props: Props) {
       {/* SECCIÓN PRINCIPAL */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
 
-        {/* 🛑 AQUÍ ESTÁ EL ARREGLO DEL GRÁFICO */}
+        {/* GRÁFICO (AHORA USA DATA ADAPTADA DE LA ACTION) */}
         <div className="xl:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden">
              <div className="p-6 border-b border-slate-100 bg-slate-50/50">
                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-indigo-600" />
-                    Ingresos Últimos 7 Días
+                    Ingresos Financieros
                  </h3>
              </div>
              <div className="p-6">
-                 {/* El contenedor con altura definida es clave para evitar el error 'width -1' */}
                  <div className="w-full h-[350px]">
-                    <RevenueChart data={last7DaysData} />
+                    {/* Renderiza los datos agrupados por la Action */}
+                    <RevenueChart data={chartAdaptedData} />
                  </div>
              </div>
         </div>
 
-        {/* TABLA DE ÓRDENES RECIENTES */}
+        {/* TABLA DE ÓRDENES RECIENTES (OPERACIONAL) */}
         <div className="xl:col-span-4 rounded-xl border bg-white shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                  <h3 className="text-lg font-bold text-slate-900">Órdenes Recientes</h3>
@@ -306,25 +275,25 @@ export default async function DashboardPage(props: Props) {
                                 </td>
                                 <td className="p-4 md:p-6 align-middle">
                                     <div className="flex flex-col">
-                                         <span className="font-bold text-slate-900 text-sm truncate max-w-30">
-                                            {order.vehicle.customer.firstName} {order.vehicle.customer.lastName}
+                                          <span className="font-bold text-slate-900 text-sm truncate max-w-30">
+                                              {order.vehicle.customer.firstName} {order.vehicle.customer.lastName}
+                                          </span>
+                                         <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 truncate max-w-30 font-medium">
+                                             <CarFront className="h-3 w-3 shrink-0 text-orange-500" /> {order.vehicle.brand} {order.vehicle.model}
                                          </span>
-                                        <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 truncate max-w-30 font-medium">
-                                            <CarFront className="h-3 w-3 shrink-0 text-orange-500" /> {order.vehicle.brand} {order.vehicle.model}
-                                        </span>
                                     </div>
                                 </td>
                                 <td className="p-4 md:p-6 align-middle">
                                      <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-[10px] md:text-xs font-bold uppercase tracking-wide whitespace-nowrap ${
-                                        order.status === 'DELIVERED' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
-                                        order.status === 'COMPLETED' ? 'bg-green-100 text-green-700 border border-green-200' :
-                                        order.status === 'CANCELLED' ? 'bg-red-50 text-red-700 border border-red-100' :
-                                        'bg-orange-50 text-orange-700 border border-orange-100'
-                                    }`}>
-                                            {order.status === 'DELIVERED' ? 'Entregado' : 
-                                             order.status === 'COMPLETED' ? 'Terminado' : 
-                                             order.status === 'CANCELLED' ? 'Cancelado' : 'Pendiente'}
-                                    </span>
+                                         order.status === 'DELIVERED' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
+                                         order.status === 'COMPLETED' ? 'bg-green-100 text-green-700 border border-green-200' :
+                                         order.status === 'CANCELLED' ? 'bg-red-50 text-red-700 border border-red-100' :
+                                         'bg-orange-50 text-orange-700 border border-orange-100'
+                                     }`}>
+                                             {order.status === 'DELIVERED' ? 'Entregado' : 
+                                              order.status === 'COMPLETED' ? 'Terminado' : 
+                                              order.status === 'CANCELLED' ? 'Cancelado' : 'Pendiente'}
+                                     </span>
                                 </td>
                                 <td className="p-6 align-middle hidden md:table-cell">
                                     <div className="flex items-center text-slate-500 text-sm font-medium">
