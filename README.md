@@ -2,7 +2,7 @@
 
 <div align="center">
 
-  ![NexusGarage Banner](https://via.placeholder.com/1200x400.png?text=NEXUS+GARAGE+OS)
+  <img src="https://github.com/user-attachments/assets/c62b9b1e-63c2-49e4-9ad5-b47492ada63b" alt="NexusGarage Banner" width="100%" />
   
   <p align="center">
     <strong>El sistema operativo integral para la gestión de talleres mecánicos modernos.</strong>
