@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bot, X, Send, ChevronRight, Sparkles, PlusCircle, Search, Settings, Calculator, StickyNote, ArrowLeft, Trash2 } from "lucide-react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -18,7 +18,7 @@ type Intent = {
   buttonText?: string;
 };
 
-// --- BASE DE CONOCIMIENTO (Navegación) ---
+// --- BASE DE CONOCIMIENTO ---
 const KNOWLEDGE_BASE: Intent[] = [
   { 
     id: "create_order", 
@@ -70,12 +70,11 @@ interface Props {
   userName?: string;
 }
 
-// Modos del Bot
 type BotMode = "chat" | "calculator" | "notes";
 
 export function NexusAssistant({ slug, userName = "Colega" }: Props) {
   const [isOpen, setIsOpen] = useState(false);
-  const [mode, setMode] = useState<BotMode>("chat"); // Estado para cambiar pantallas
+  const [mode, setMode] = useState<BotMode>("chat");
   const [input, setInput] = useState("");
   
   // --- ESTADOS CALCULADORA ---
@@ -86,13 +85,11 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
   const [note, setNote] = useState("");
   const [savedNotes, setSavedNotes] = useState<string[]>([]);
 
-  // Cargar notas al inicio
   useEffect(() => {
     const saved = localStorage.getItem("nexus_bot_notes");
     if (saved) setSavedNotes(JSON.parse(saved));
   }, []);
 
-  // Guardar notas al cambiar
   useEffect(() => {
     localStorage.setItem("nexus_bot_notes", JSON.stringify(savedNotes));
   }, [savedNotes]);
@@ -108,18 +105,16 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, isOpen, mode]); // Scroll también al cambiar de modo
+  }, [messages, isOpen, mode]);
 
   // --- LÓGICA DEL CHAT ---
   const processMessage = (text: string) => {
     const lowerText = text.toLowerCase();
     
-    // Detectar Cambio de Modo por texto
     if (lowerText.includes("calculadora") || lowerText.includes("calcular") || lowerText.includes("iva")) {
         setMessages(prev => [...prev, { id: Date.now().toString(), role: "bot", text: "Abriendo calculadora..." }]);
         setTimeout(() => setMode("calculator"), 500);
@@ -131,7 +126,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
         return;
     }
 
-    // Buscador de Intents
     let bestMatch: Intent | null = null;
     let maxMatches = 0;
 
@@ -172,11 +166,10 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
     setInput("");
   };
 
-  // --- LOGICA CALCULADORA ---
   const handleCalculate = () => {
     const val = parseFloat(calcAmount);
     if (isNaN(val)) return;
-    const tax = val * 0.19; // IVA Chile
+    const tax = val * 0.19; 
     setCalcResult({
         net: val,
         tax: tax,
@@ -184,7 +177,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
     });
   };
 
-  // --- LOGICA NOTAS ---
   const addNote = () => {
     if (!note.trim()) return;
     setSavedNotes(prev => [note, ...prev]);
@@ -198,7 +190,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
 
   // --- RENDERIZADO DE VISTAS ---
   
-  // 1. VISTA DE CHAT (La original)
   const renderChat = () => (
     <>
         <CardContent className="flex-1 p-0 overflow-hidden bg-slate-50 relative">
@@ -258,7 +249,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
     </>
   );
 
-  // 2. VISTA CALCULADORA
   const renderCalculator = () => (
     <div className="flex-1 flex flex-col p-6 bg-slate-50">
         <div className="mb-6">
@@ -298,17 +288,17 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
     </div>
   );
 
-  // 3. VISTA NOTAS
   const renderNotes = () => (
     <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
          <div className="p-4 bg-white border-b border-slate-200">
             <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Bloc de Notas Rápido</h3>
             <div className="flex gap-2">
+                {/* ✅ LINTER FIX: min-h-15 */}
                 <Textarea 
                     placeholder="Ej: Llamar al cliente del Yaris..." 
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    className="min-h-[60px] resize-none text-sm bg-slate-50"
+                    className="min-h-15 resize-none text-sm bg-slate-50"
                     onKeyDown={(e) => {
                         if(e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
@@ -349,10 +339,9 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
   return (
     <div className="fixed bottom-24 right-6 z-50 flex flex-col items-end gap-4 print:hidden">
       
-      {/* VENTANA PRINCIPAL */}
       {isOpen && (
-        <Card className="w-80 sm:w-96 h-[32rem] shadow-2xl border-slate-200 flex flex-col animate-in slide-in-from-bottom-5 fade-in duration-200 overflow-hidden">
-          {/* HEADER COMÚN */}
+        // ✅ LINTER FIX: h-128
+        <Card className="w-80 sm:w-96 h-128 shadow-2xl border-slate-200 flex flex-col animate-in slide-in-from-bottom-5 fade-in duration-200 overflow-hidden">
           <CardHeader className="bg-slate-900 text-white p-4 flex flex-row justify-between items-center space-y-0 shrink-0">
             <div className="flex items-center gap-3">
                 {mode !== 'chat' && (
@@ -378,7 +367,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
             </Button>
           </CardHeader>
           
-          {/* CONTENIDO CAMBIANTE SEGÚN MODO */}
           {mode === 'chat' && renderChat()}
           {mode === 'calculator' && renderCalculator()}
           {mode === 'notes' && renderNotes()}
@@ -386,7 +374,6 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
         </Card>
       )}
 
-      {/* BOTÓN FLOTANTE ACTIVADOR */}
       <div className="group relative">
         {!isOpen && (
             <span className="absolute right-16 top-4 bg-white px-3 py-1 rounded-lg text-xs font-medium text-slate-600 shadow-md border border-slate-100 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
@@ -398,7 +385,8 @@ export function NexusAssistant({ slug, userName = "Colega" }: Props) {
             className={`h-14 w-14 rounded-full shadow-2xl transition-all duration-300 border-4 border-white ${
             isOpen 
                 ? "bg-slate-800 hover:bg-slate-900 rotate-90 scale-0 opacity-0 hidden" 
-                : "bg-gradient-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 scale-100 opacity-100 flex"
+                // ✅ LINTER FIX: bg-linear-to-br
+                : "bg-linear-to-br from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 scale-100 opacity-100 flex"
             }`}
         >
             <Bot className="h-7 w-7 text-white" />

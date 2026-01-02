@@ -2,7 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { Loader2, FileSpreadsheet, ChevronDown } from "lucide-react";
-import { getRevenueReport } from "@/actions/get-revenue-report";
+// ✅ CAMBIO 1: Importamos la nueva acción correcta
+import { getOrdersForExport } from "@/actions/get-orders-export";
 import { useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
@@ -16,18 +17,20 @@ import {
 export function DownloadReportButton({ tenantId }: { tenantId: string }) {
   const [loading, setLoading] = useState(false);
 
-  // Ahora la función recibe el rango seleccionado
   const handleDownload = async (range: string, label: string) => {
     setLoading(true);
     try {
-      const data = await getRevenueReport(tenantId, range);
+      // ✅ CAMBIO 2: Llamamos a la función que devuelve ARRAY
+      const data = await getOrdersForExport(tenantId, range);
 
+      // ✅ CAMBIO 3: Ahora TypeScript sabe que data es un array, .length funciona
       if (data.length === 0) {
         toast.info(`No hay ingresos para: ${label}`);
         setLoading(false);
         return;
       }
 
+      // El resto de la lógica funciona perfecto porque la estructura coincide
       const totalRevenue = data.reduce((sum, order) => sum + order.total, 0);
 
       const formattedData: any[] = data.map(row => ({
@@ -57,16 +60,14 @@ export function DownloadReportButton({ tenantId }: { tenantId: string }) {
 
       const columnWidths = [
         { wch: 10 }, { wch: 12 }, { wch: 30 }, { wch: 12 },
-        { wch: 25 }, { wch: 10 }, { wch: 15 }, { wch: 15 }
+        { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }
       ];
       worksheet['!cols'] = columnWidths;
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Ingresos");
 
-      // Nombre de archivo descriptivo
       const dateStr = new Date().toISOString().split('T')[0];
-      // Limpiamos el label para que sirva de nombre de archivo (ej: reporte_mes_anterior.xlsx)
       const cleanLabel = label.toLowerCase().replace(/ /g, "_");
       
       XLSX.writeFile(workbook, `Reporte_${cleanLabel}_${dateStr}.xlsx`);
